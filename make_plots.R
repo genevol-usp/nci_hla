@@ -29,7 +29,7 @@ samples <- readLines("./phase1/data/sample_ids.txt")
 
 nci_qpcr <- read_tsv("./phase1/data/nci_expression.tsv")
 
-nci_qpcr_gene <- distinct(nci_qpcr_ab, subject, locus, mRNA, c_surface) %>%
+nci_qpcr_gene <- distinct(nci_qpcr, subject, locus, mRNA, c_surface) %>%
     filter(subject %in% samples)
 
 nci_qpcr_lineage <- nci_qpcr %>%
@@ -198,13 +198,13 @@ summ_df <-
            class = ifelse(locus %in% c("A", "B", "C"), "Class I", "Class II"),
            ny = ifelse(class == "Class I", max(q75.nci) + 50 - q50.nci, 0 - q50.nci))
 
-png("./plots/nci_vs_geuvadis_summaries.png", width = 6, height = 4, units = "in", res = 150)
+png("./plots/nci_vs_geuvadis_summaries.png", width = 6.5, height = 4, units = "in", res = 150)
 ggplot(summ_df, aes(q50.geuvadis, q50.nci, color = class)) +
     coord_cartesian(ylim = c(0, max(summ_df$q75.nci) + 50)) +
     ggrepel::geom_label_repel(aes(label = locus, fill = class), color = "white",
                               show.legend = FALSE, size = 3.5, 
-                              nudge_y = summ_df$ny,
-                              segment.color = "grey75") +
+                              box.padding = unit(0.35, "lines"),
+                              segment.color = "grey85") +
     geom_errorbar(aes(ymin = q25.nci, ymax = q75.nci)) +
     geom_errorbarh(aes(xmin = q25.geuvadis, xmax = q75.geuvadis, height = 30)) +
     geom_point(size = 3) +
