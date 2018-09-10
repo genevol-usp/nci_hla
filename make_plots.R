@@ -168,6 +168,38 @@ ggplot(timepoints_df, aes(tpm.t1, tpm.t2)) +
     labs(x = "timepoint 1", y = "timepoint 2")
 dev.off()
 
+
+png("./plots/nci_timepoints_all.png", width = 5, height = 3.5, units = "in", res = 300)
+ggplot(timepoints_df, aes(tpm.t1, tpm.t2)) +
+    geom_point(aes(color = locus)) +
+    ggsci::scale_color_npg() +
+    scale_x_continuous(breaks = scales::pretty_breaks(3)) +
+    scale_y_continuous(breaks = scales::pretty_breaks(3)) +
+    theme_bw() +
+    labs(x = "TPM (timepoint 1)", y = "TPM (timepoint 2)")
+dev.off()
+
+# Timepoint 2 vs qPCR
+gene_df_t2 <- 
+    inner_join(nci_rnaseq_gene_t2, nci_qpcr_gene, by = c("subject", "locus"))
+
+png("./plots/rnaseqt2_vs_qpcr.png", width = 12, height = 4, units = "in", res = 300)
+ggplot(gene_df_t2, aes(mRNA, tpm)) +
+    geom_point(size = 2) +
+    geom_smooth(method = lm, se = FALSE) +
+    scale_x_continuous(breaks = scales::pretty_breaks(3)) +
+    facet_wrap(~locus, scales = "free") +
+    theme_bw() +
+    theme(axis.title = element_text(size = 16),
+          axis.text = element_text(size = 14),
+          legend.text = element_text(size = 14),
+          strip.text = element_text(face = "bold", size = 16)) +
+    labs(x = "qPCR", y = "RNAseq (TPM)") +
+    ggpmisc::stat_poly_eq(aes(label = ..adj.rr.label..), rr.digits = 2,
+                          formula = y ~ x, parse = TRUE, size = 6)
+dev.off()
+
+
 # Comparison with Geuvadis
 
 gene_nci <- nci_rnaseq_gene %>%

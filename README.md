@@ -64,7 +64,7 @@ Comparison with Geuvadis
 
 The order of locus-level estimates are similar for LCLs (Geuvadis) and PBMCs.
 
-<img src="./plots/nci_vs_geuvadis_summaries.png" width="900" />
+<img src="./plots/nci_vs_geuvadis_summaries.png" width="975" />
 
 Timepoint 2
 -----------
@@ -72,3 +72,7 @@ Timepoint 2
 In order to evaluate whether the low correlation of RNA-seq and qPCR were due to mRNA degradation for the RNA-seq assay, we performed a second round of RNA-seq for 11 samples. Below we see the correlation between the two timepoints.
 
 <img src="./plots/nci_timepoints.png" width="1800" />
+
+Displaying all loci on the same plot:
+
+<img src="./plots/nci_timepoints_all.png" width="1500" />
