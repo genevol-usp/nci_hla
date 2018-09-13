@@ -41,7 +41,11 @@ Correlation between qPCR and RNAseq expression estimates
 
 We then compared the expression level estimates between RNAseq and qPCR. There is no correlation for HLA-B, some for HLA-C, and the highest is seen for HLA-A.
 
-<img src="./plots/rnaseq_vs_qpcr.png" width="3600" />
+<img src="./plots/rnaseq_vs_qpcr.png" width="2400" />
+
+However, these correlations calculated with the estimates from the HLA-personalized pipeline are higher than those from the standard mapping to a reference genome:
+
+<img src="./plots/rnaseqREF_vs_qpcr.png" width="2400" />
 
 HLA-C expression: RNA vs Antibody
 ---------------------------------

@@ -78,6 +78,13 @@ hlac_df <- gene_df %>%
     select(subject, method, expression, c_surface) %>%
     arrange(subject, method)
   
+nci_rnaseq_ref <- 
+    read_tsv("./phase1/1-map_to_genome/hla_quantification.tsv") %>%
+    filter(locus %in% gencode_hla$gene_name) %>%
+    select(subject, locus, tpm)
+
+gene_df_ref <- inner_join(nci_rnaseq_ref, nci_qpcr_gene, by = c("subject", "locus"))
+
 
 # plots
 png("./plots/expression_boxplot.png", width = 8, height = 5, units = "in", res = 300)
@@ -91,8 +98,24 @@ ggplot(nci_rnaseq_gene, aes(locus, tpm)) +
     labs(y = "TPM")
 dev.off()
 
-png("./plots/rnaseq_vs_qpcr.png", width = 12, height = 4, units = "in", res = 300)
+png("./plots/rnaseq_vs_qpcr.png", width = 8, height = 3, units = "in", res = 300)
 ggplot(gene_df, aes(mRNA, tpm)) +
+    geom_point(size = 2) +
+    geom_smooth(method = lm, se = FALSE) +
+    scale_x_continuous(breaks = scales::pretty_breaks(3)) +
+    facet_wrap(~locus, scales = "free") +
+    theme_bw() +
+    theme(axis.title = element_text(size = 16),
+          axis.text = element_text(size = 14),
+          legend.text = element_text(size = 14),
+          strip.text = element_text(face = "bold", size = 16)) +
+    labs(x = "qPCR", y = "RNAseq (TPM)") +
+    ggpmisc::stat_poly_eq(aes(label = ..adj.rr.label..), rr.digits = 2,
+                          formula = y ~ x, parse = TRUE, size = 6)
+dev.off()
+
+png("./plots/rnaseqREF_vs_qpcr.png", width = 8, height = 3, units = "in", res = 300)
+ggplot(gene_df_ref, aes(mRNA, tpm)) +
     geom_point(size = 2) +
     geom_smooth(method = lm, se = FALSE) +
     scale_x_continuous(breaks = scales::pretty_breaks(3)) +
