@@ -2,7 +2,8 @@ library(tidyverse)
 
 gtf <- "/home/vitor/gencode_data/v36/gencode.v36.annotation.gtf.gz" %>%
     read_tsv(comment = "##", col_names = FALSE) %>%
-    setNames(c("seqname", "source", "feature", "start", "end", "score", "strand", "frame", "attribute"))
+    setNames(c("seqname", "source", "feature", "start", "end", 
+	       "score", "strand", "frame", "attribute"))
 
 tmp <- gtf %>%
     filter(feature == "exon") %>%
@@ -11,7 +12,7 @@ tmp <- gtf %>%
 	   block_size = end - start) %>%
     select(seqname, transcript_id, start, end, strand, block_size) %>%
     mutate(seqname = factor(seqname, levels = paste0("chr", c(1:22, "X", "Y", "M")))) %>%
-    arrange(seqname, start) %>%
+    arrange(seqname, start)
 
 bed <- tmp %>%
     group_by(seqname, transcript_id) %>%
