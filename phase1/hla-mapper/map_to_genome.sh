@@ -11,7 +11,7 @@
 
 cd $PBS_O_WORKDIR
 
-STAR=/home/ecastelli/STAR/STAR-2.7.1a/bin/Linux_x86_64_static/STAR
+STAR=/home/vitor/Libraries/STAR-2.7.3a/bin/Linux_x86_64_static/STAR
 SAMPLE=$( awk "FNR==$PBS_ARRAYID" samples.txt )
 INDEX=starindex
 FQ1=$( ls -v /raid/genevol/nci_rnaseq/phase1/fastq/${SAMPLE}*R1_001.fastq.gz | paste -s -d, - )

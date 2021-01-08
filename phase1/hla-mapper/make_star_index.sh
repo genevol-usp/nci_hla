@@ -10,7 +10,7 @@
 
 cd $PBS_O_WORKDIR
 
-STAR=/home/ecastelli/STAR/STAR-2.7.1a/bin/Linux_x86_64_static/STAR
+STAR=/home/vitor/Libraries/STAR-2.7.3a/bin/Linux_x86_64_static/STAR
 GENOME=/home/vitor/gencode_data/v36/GRCh38.primary_assembly.genome.fa
 GTF=/home/vitor/gencode_data/v36/gencode.v36.annotation.gtf
 OUT=starindex
