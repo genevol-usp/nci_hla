@@ -24,24 +24,13 @@ STAR=/home/vitor/Libraries/STAR-2.7.3a/bin/Linux_x86_64_static/STAR
 
 mkdir -p $OUT
 
-if [ "${#FASTQ1[@]}" -eq 1 ]; then
-    
-    $HLAMAPPER rna r1=$FASTQ1 r2=$FASTQ2 sample=$SAMPLE db=$DB output=$OUT threads=$CPUS bwa=$BWA star=$STAR
+FQ1UNZ=/scratch/vitor/${SAMPLE}_R1.fastq
+FQ2UNZ=/scratch/vitor/${SAMPLE}_R2.fastq
 
-elif [ "${#FASTQ1[@]}" -gt 1 ]; then
+zcat ${FASTQ1[@]} > $FQTMP1 &
+zcat ${FASTQ2[@]} > $FQTMP2
+wait
 
-    FQTMP1=/scratch/vitor/${SAMPLE}_R1.fastq
-    FQTMP2=/scratch/vitor/${SAMPLE}_R2.fastq
+$HLAMAPPER rna r1=$FQ1UNZ r2=$FQ2UNZ sample=$SAMPLE db=$DB output=$OUT threads=$CPUS bwa=$BWA star=$STAR
 
-    zcat ${FASTQ1[@]} > $FQTMP1 &
-    zcat ${FASTQ2[@]} > $FQTMP2
-    wait
-    
-    $HLAMAPPER rna r1=$FQTMP1 r2=$FQTMP2 sample=$SAMPLE db=$DB output=$OUT threads=$CPUS bwa=$BWA star=$STAR
-    
-    rm $FQTMP1 $FQTMP2
-
-else
-    echo "please specify fastq files correctly"
-fi
-
+rm $FQ1UNZ $FQ2UNZ

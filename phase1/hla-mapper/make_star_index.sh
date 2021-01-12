@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
 
-#PBS -l nodes=1:ppn=8
+#PBS -l nodes=1:ppn=16
 #PBS -l mem=48gb
 #PBS -l walltime=24:00:00
 #PBS -q short
 #PBS -N StarIndexer
 #PBS -j oe
-#PBS -o star_index.log
+#PBS -o log/star_index.log
 
 cd $PBS_O_WORKDIR
 
-STAR=/home/vitor/Libraries/STAR-2.7.3a/bin/Linux_x86_64_static/STAR
-GENOME=/home/vitor/gencode_data/v36/GRCh38.primary_assembly.genome.fa
-GTF=/home/vitor/gencode_data/v36/gencode.v36.annotation.gtf
+STAR=$HOME/Libraries/STAR-2.7.3a/bin/Linux_x86_64_static/STAR
+GENOME=$HOME/gencode_data/v36/GRCh38.primary_assembly.genome.fa
+GTF=$HOME/gencode_data/v36/gencode.v36.primary_assembly.annotation.gtf
 OUT=starindex
 
 mkdir -p $OUT
