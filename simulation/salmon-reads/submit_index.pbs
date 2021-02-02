@@ -1,0 +1,13 @@
+#!/bin/bash
+
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=8gb
+#PBS -l walltime=24:00:00
+#PBS -q short
+#PBS -N Salmon-index
+#PBS -j oe
+#PBS -o log/$PBS_JOBNAME
+
+cd $PBS_O_WORKDIR
+
+salmon index -t ensembl.transcripts.fa -i index
