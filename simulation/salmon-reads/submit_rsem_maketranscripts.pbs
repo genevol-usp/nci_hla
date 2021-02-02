@@ -4,9 +4,9 @@
 #PBS -l mem=8gb
 #PBS -l walltime=01:00:00
 #PBS -q short
-#PBS -N RSEM
+#PBS -N RSEM-prep-ref
 #PBS -j oe
-#PBS -o /raid/genevol/geuvadis/salmon/$PBS_JOBNAME.log
+#PBS -o log/$PBS_JOBNAME
 
 cd $PBS_O_WORKDIR
 
