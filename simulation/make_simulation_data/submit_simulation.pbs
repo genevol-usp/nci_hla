@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+
+#PBS -l nodes=1:ppn=2
+#PBS -l mem=16gb
+#PBS -l walltime=24:00:00
+#PBS -q short
+#PBS -t 1-50
+#PBS -N SimulateRnaSeq
+#PBS -j oe
+#PBS -o log/$PBS_JOBID.log
+
+cd $PBS_O_WORKDIR
+
+Rscript simulate.R $PBS_ARRAYID
