@@ -12,7 +12,8 @@ dir.create(outdir)
 simulate_experiment_countmat(fasta = "./simulation_index.fa",
 			     readmat = phenotypes,
 			     readlen = 126,
-			     fraglen = 300,
+			     fraglen = 261,
+			     fragsd = 115,
 			     outdir = outdir)
 
 system(sprintf("./fa2fq.sh %s && rm %s/*fasta", outdir, outdir))

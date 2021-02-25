@@ -274,13 +274,9 @@ write_tsv(select(pheno_matrix, -1), "phenotypes.tsv")
 writeXStringSet(index, "simulation_index.fa")
 
 # compute mean and sd of fragment length distribution
-
 fld <- scan("../../analysis/salmon/quant/66K00003_t1/libParams/flenDist.txt")
 
-fld_params <- tibble(mean = sum(1:length(fld) * fld),
-		     sd = sd(1:length(fld) * fld))
+fld_params <- tibble(mu = sum(1:length(fld) * fld)) %>%
+    mutate(sigma = sqrt(sum( ( (1:length(fld) - mu)^2 ) * (fld) )))
 
 write_tsv(fld_params, "fld_params.tsv")
-
-
-
