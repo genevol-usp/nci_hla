@@ -66,6 +66,8 @@ genomematch <- matchPDict(hlaset, Hsapiens$"6"[29e6:32e6]) %>%
     mutate(locus = sub("^([^*]+).+$", "\\1", allele)) %>%
     select(locus, allele, start, end, width)
 
+write_tsv(genomematch, "genome_match.tsv")
+
 # attribute positions to all alleles
 hlagen_ref <- inner_join(hlagen, genomematch, by = "allele") %>%
     mutate(cdslen = map_int(cds, nchar))
@@ -137,16 +139,15 @@ exon_annots <- annots %>%
 
 hla_transcripts <- distinct(exon_annots, gene_name, tx_id)
 
-## select transcripts which explain 90% of the expression in Geuvadis
-geuvadis_samples <- geuvadis_info %>%
-    filter(kgp_phase3 == 1) %>%
-    select(ena_id, name)
+## select transcripts which explain 90% of the expression in the real data
+nci_samples <- read_tsv("../../analysis/samples.txt", col_names = c("tp", "sampleid")) %>%
+    filter(tp == 1)
 
-hla_expression <- 
-    "/raid/genevol/geuvadis/salmon/quant/%s/quant.sf" %>%
-    sprintf(geuvadis_samples$ena_id) %>%
-    setNames(geuvadis_samples$name) %>%
-    map_df(~read_tsv(.) %>% inner_join(hla_transcripts, by = c("Name" = "tx_id")), 
+hla_expression <- "../../analysis/salmon/quant/%s_t1/quant.sf" %>%
+    sprintf(nci_samples$sampleid) %>%
+    setNames(nci_samples$sampleid) %>%
+    map_df(~read_tsv(.) %>% 
+	   inner_join(hla_transcripts, by = c("Name" = "tx_id")), 
            .id = "sampleid")
 
 hla_selected_transcripts <- hla_expression %>%
@@ -170,39 +171,34 @@ exon_positions <- exon_annots %>%
     unnest(c(pos, sq))
 
 
-# Ramdonly choose 50 individuals from 1000 Genomes to base the simulation on
-
-## first we need to "fix" the genotypes from Abi-Rached and Antoine-Gourraud
-## so we can match the alleles to recent nomenclature
-allele_history <- "/home/vitor/IMGTHLA/Allelelist_history.txt" %>%
-    read_csv(comment = "#") %>%
-    pivot_longer(-(1:2), names_to = "version", values_to = "allele") %>%
-    select(new = 2, old = allele) %>%
-    distinct(new, old) %>%
-    filter(!is.na(old), !is.na(new))
-
-hla_genotypes <- polypheme_pag %>%
-    filter(subject %in% geuvadis_samples$name) %>%
-    filter(paste0("HLA-", locus) %in% unique(hlagen$gene_name)) %>%
-    group_by(subject, locus) %>%
-    mutate(i = seq_len(n())) %>%
-    ungroup() %>%
-    complete(subject, locus, i) %>%
-    separate_rows(allele, sep = "/") %>%
-    left_join(allele_history, by = c("allele" = "old")) %>%
-    mutate(inferred = map_chr(allele, ~first(grep(., hlagen$allele, fixed=TRUE, value=TRUE))),
-	   allele = ifelse(is.na(new), inferred, new),
-	   gene_name = paste0("HLA-", locus)) %>%
-    select(subject, gene_name, i, allele) %>%
-    distinct(subject, gene_name, i, .keep_all = TRUE) %>%
-    group_by(subject) %>%
+# HLA genotypes
+hla_genotypes <- 
+    "/raid/genevol/nci_rnaseq/phase1/HLA-A, -B, -C expression levels for Pat.xlsx" %>%
+    readxl::read_xlsx() %>%
+    select(sampleid = 3, starts_with("Class")) %>%
+    pivot_longer(-1, names_to = "hap", values_to = "allele") %>%
+    mutate(hap = sub("Class 1", "", hap)) %>%
+    separate(hap, c("gene_name", "i"), sep = " ") %>%
+    mutate(i = parse_number(i)) %>%
+    extract(allele, c("f1", "f2", "f3"), "(\\d{2})(\\d{2})(\\d*)") %>%
+    mutate(f3 = if_else(f3 != "", str_pad(f3, 2, pad = "0"), f3)) %>%
+    unite(allele, c("f1", "f2", "f3"), sep = ":") %>%
+    mutate(allele = sub(":$", "", allele),
+	   allele = paste(gene_name, allele, sep = "*"),
+	   allele = ifelse(grepl("NA", allele), NA, allele),
+	   allele = recode(allele, "C*17:00" = "C*17"),
+	   allele = ifelse(sampleid == "66K00241" & allele == "A*03:01:01", "A*30:01:01", allele),
+	   gene_name = paste0("HLA-", gene_name),
+	   inferred = map_chr(allele, ~first(grep(., hlagen$allele, fixed = TRUE, value = TRUE)))) %>%
+    select(sampleid, gene_name, i, allele = inferred) %>%
+    group_by(sampleid) %>%
     filter(!any(is.na(allele))) %>%
     ungroup()
 
 ## choose 50 individuals
 set.seed(10)
 simul_df <- hla_genotypes %>%
-    filter(subject %in% sample(unique(subject), 50))
+    filter(sampleid %in% sample(unique(sampleid), 50))
 
 write_tsv(simul_df, "./hlagenotypes.tsv")
 
@@ -237,10 +233,7 @@ hla_index <- DNAStringSet(results$sq) %>%
     setNames(paste(results$tx_id, results$allele, sep = "_"))
 
 # make count matrix
-genome_backgroup_sample <- filter(geuvadis_info, name == "NA12890")
-
-genome_background_quants <- "/raid/genevol/geuvadis/salmon/quant/%s/quant.sf" %>%
-    sprintf(genome_backgroup_sample$ena_id) %>%
+genome_background_quants <- "../../analysis/salmon/quant/66K00003_t1/quant.sf" %>%
     read_tsv() %>%
     select(tx_id = Name, readcount = NumReads) %>%
     filter(! tx_id %in% hla_transcripts$tx_id)
@@ -249,7 +242,7 @@ hla_ground_truth <- hla_expression %>%
     filter(Name %in% unique(hla_selected_transcripts$tx_id)) %>%
     select(sampleid, gene_name, tx_id = Name, readcount = NumReads) %>%
     arrange(sampleid, gene_name, tx_id) %>%
-    inner_join(simul_df, by = c("sampleid" = "subject", "gene_name")) %>%
+    inner_join(simul_df, by = c("sampleid", "gene_name")) %>%
     group_by(sampleid, tx_id) %>%
     mutate(readcount = readcount/2L) %>%
     ungroup() %>%
@@ -279,4 +272,15 @@ index <- c(index_transcriptome, hla_index)[pheno_matrix$tx_id]
 # save output
 write_tsv(select(pheno_matrix, -1), "phenotypes.tsv")
 writeXStringSet(index, "simulation_index.fa")
+
+# compute mean and sd of fragment length distribution
+
+fld <- scan("../../analysis/salmon/quant/66K00003_t1/libParams/flenDist.txt")
+
+fld_params <- tibble(mean = sum(1:length(fld) * fld),
+		     sd = sd(1:length(fld) * fld))
+
+write_tsv(fld_params, "fld_params.tsv")
+
+
 
