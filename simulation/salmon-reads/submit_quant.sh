@@ -14,7 +14,8 @@ cd $PBS_O_WORKDIR
 SAMPLE=$( awk "FNR==$PBS_ARRAYID" ../samples.txt )
 FQ1=/scratch/vitor/simulation/${SAMPLE}/sample_01_1.fastq.gz
 FQ2=/scratch/vitor/simulation/${SAMPLE}/sample_01_2.fastq.gz
-OUT=./quant_nocorrection/$SAMPLE
+OUT=./quant/$SAMPLE
 CPUS=$PBS_NUM_PPN 
 
-salmon quant -i index -l A -1 $FQ1 -2 $FQ2 -p $CPUS -o $OUT
+salmon quant -i index -l A -1 $FQ1 -2 $FQ2 -p $CPUS -o $OUT \
+    --seqBias --posBias --gcBias

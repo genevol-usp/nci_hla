@@ -13,6 +13,6 @@ do
 	    "@"gensub(/;/, " ", 1, gensub(/\//, "_", 1, $1))"/"mate"\n"\
 	    $2"\n"\
 	    "+\n"\
-	    gensub(/./, ">", "g", $2)\
+	    gensub(/./, "F", "g", $2)\
 	}' | gzip -c > $FQ
 done

@@ -121,6 +121,13 @@ positions_all <- hlagen_cds_split %>%
 
 
 # transcripts
+hla_transcripts_annot <- annots %>%
+    filter(X3 == "transcript") %>%
+    transmute(gene_id = str_extract(X9, "(?<=gene_id\\s\")[^\"]+"),
+	      gene_name = str_extract(X9, "(?<=gene_name\\s\")[^\"]+"), 
+	      tx_id = str_extract(X9, "(?<=transcript_id\\s\")[^\"]+")) %>%
+    filter(gene_name %in% paste0("HLA-", c("A", "B", "C")))
+
 exon_annots <- annots %>%
     filter(X1 == 6) %>%
     filter(X3 == "exon") %>%
@@ -198,7 +205,12 @@ hla_genotypes <-
 ## choose 50 individuals
 set.seed(10)
 simul_df <- hla_genotypes %>%
-    filter(sampleid %in% sample(unique(sampleid), 50))
+    filter(sampleid %in% hla_expression$sampleid) %>%
+    group_by(sampleid) %>%
+    nest() %>%
+    ungroup() %>%
+    sample_n(50) %>%
+    unnest(c(data))
 
 write_tsv(simul_df, "./hlagenotypes.tsv")
 
@@ -236,7 +248,7 @@ hla_index <- DNAStringSet(results$sq) %>%
 genome_background_quants <- "../../analysis/salmon/quant/66K00003_t1/quant.sf" %>%
     read_tsv() %>%
     select(tx_id = Name, readcount = NumReads) %>%
-    filter(! tx_id %in% hla_transcripts$tx_id)
+    filter(! tx_id %in% hla_transcripts_annot$tx_id)
 
 hla_ground_truth <- hla_expression %>%
     filter(Name %in% unique(hla_selected_transcripts$tx_id)) %>%
