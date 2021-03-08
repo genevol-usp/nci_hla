@@ -1,5 +1,4 @@
 library(Biostrings)
-library("BSgenome.Hsapiens.NCBI.GRCh38")
 library(hlaseqlib)
 library(tidyverse)
 
@@ -33,8 +32,8 @@ loci <- c("A", "B", "C")
 
 IMGTDB <- "/home/vitor/IMGTHLA"
 
-# Gene annotations -> strand
-annots <- "/home/vitor/hisat2/grch38_snp_tran/Homo_sapiens.GRCh38.99.gtf" %>% 
+# Gene annotations
+annots <- "/home/vitor/gencode/gencode.v37.primary_assembly.annotation.gtf" %>% 
     read_tsv(comment = "#", col_names = FALSE, col_types = "c-cii-c-c")
 
 gene_annots <- annots %>%
@@ -58,7 +57,11 @@ hlaset <- gsub("[+-]", "", hlagen$cds) %>%
     DNAStringSet() %>%
     setNames(hlagen$allele)
 
-genomematch <- matchPDict(hlaset, Hsapiens$"6"[29e6:32e6]) %>%
+genome <- readDNAStringSet("/home/vitor/gencode/GRCh38.primary_assembly.genome.fa")
+
+mhc <- subseq(genome["chr6 6"], 29e6, 32e6)
+
+genomematch <- matchPDict(hlaset, mhc[[1]]) %>%
     as.list() %>%
     map_df(as.data.frame, .id = "allele") %>%
     as_tibble() %>%
@@ -129,19 +132,17 @@ hla_transcripts_annot <- annots %>%
     filter(gene_name %in% paste0("HLA-", c("A", "B", "C")))
 
 exon_annots <- annots %>%
-    filter(X1 == 6) %>%
-    filter(X3 == "exon") %>%
+    filter(X1 == "chr6", X3 == "exon") %>%
     transmute(gene_id = str_extract(X9, "(?<=gene_id\\s\")[^\"]+"),
               tx_id = str_extract(X9, "(?<=transcript_id\\s\")[^\"]+"),
-	      tx_biotype = str_extract(X9, "(?<=transcript_biotype\\s\")[^\"]+"),
+	      tx_type = str_extract(X9, "(?<=transcript_type\\s\")[^\"]+"),
 	      start = X4, 
               end = X5) %>%
     inner_join(gene_annots, by = "gene_id") %>%
-    select(gene_id, gene_name, tx_id, tx_biotype, strand, start, end) %>%
-    filter(tx_biotype == "protein_coding") %>%
-    filter(tx_id != "ENST00000640615") %>% #B isoform with exon from C; computationally predicted
-    select(-tx_biotype) %>%
-    mutate(sq = map2_chr(start, end, ~substring(as.character(Hsapiens$"6"), .x, .y))) %>%
+    select(gene_id, gene_name, tx_id, tx_type, strand, start, end) %>%
+    filter(tx_type == "protein_coding") %>%
+    select(-tx_type) %>%
+    mutate(sq = map2_chr(start, end, ~as.character(subseq(genome["chr6 6"], .x, .y)))) %>%
     arrange(gene_name, tx_id, start)
 
 hla_transcripts <- distinct(exon_annots, gene_name, tx_id)
@@ -150,12 +151,15 @@ hla_transcripts <- distinct(exon_annots, gene_name, tx_id)
 nci_samples <- read_tsv("../../analysis/samples.txt", col_names = c("tp", "sampleid")) %>%
     filter(tp == 1)
 
-hla_expression <- "../../analysis/salmon/quant/%s_t1/quant.sf" %>%
+nci_expression <- "../../analysis/salmon/quant/%s_t1/quant.sf" %>%
     sprintf(nci_samples$sampleid) %>%
     setNames(nci_samples$sampleid) %>%
-    map_df(~read_tsv(.) %>% 
-	   inner_join(hla_transcripts, by = c("Name" = "tx_id")), 
-           .id = "sampleid")
+    map_df(read_tsv, .id = "sampleid") %>%
+    group_by(sampleid) %>%
+    mutate(scaled_counts = as.integer(round(NumReads/sum(NumReads) * 3e7))) %>%
+    ungroup()
+
+hla_expression <- inner_join(nci_expression, hla_transcripts, by = c("Name" = "tx_id")) 
 
 hla_selected_transcripts <- hla_expression %>%
     group_by(sampleid, gene_name) %>%
@@ -209,6 +213,7 @@ simul_df <- hla_genotypes %>%
     group_by(sampleid) %>%
     nest() %>%
     ungroup() %>%
+    arrange(sampleid) %>%
     sample_n(50) %>%
     unnest(c(data))
 
@@ -245,14 +250,14 @@ hla_index <- DNAStringSet(results$sq) %>%
     setNames(paste(results$tx_id, results$allele, sep = "_"))
 
 # make count matrix
-genome_background_quants <- "../../analysis/salmon/quant/66K00003_t1/quant.sf" %>%
-    read_tsv() %>%
-    select(tx_id = Name, readcount = NumReads) %>%
+genome_background_quants <- nci_expression %>%
+    filter(sampleid == "66K00003") %>%
+    select(tx_id = Name, readcount = scaled_counts) %>%
     filter(! tx_id %in% hla_transcripts_annot$tx_id)
 
 hla_ground_truth <- hla_expression %>%
     filter(Name %in% unique(hla_selected_transcripts$tx_id)) %>%
-    select(sampleid, gene_name, tx_id = Name, readcount = NumReads) %>%
+    select(sampleid, gene_name, tx_id = Name, readcount = scaled_counts) %>%
     arrange(sampleid, gene_name, tx_id) %>%
     inner_join(simul_df, by = c("sampleid", "gene_name")) %>%
     group_by(sampleid, tx_id) %>%
@@ -265,18 +270,15 @@ hla_ground_truth <- hla_expression %>%
 
 final_quants <- hla_ground_truth %>%
     split(.$sampleid) %>%
-    map_df(~bind_rows(genome_background_quants, .) %>%
-	   fill(sampleid, .direction = "up")) %>%
-    group_by(sampleid) %>%
-    mutate(readcount = as.integer(round(readcount/sum(readcount) * 3e7))) %>%
-    ungroup()
+    map(~select(., -sampleid)) %>%
+    map_df(~bind_rows(genome_background_quants, .), .id = "sampleid")
 
 pheno_matrix <- final_quants %>%
     pivot_wider(names_from = sampleid, values_from = readcount) %>%
     mutate_at(vars(-tx_id), ~replace_na(., 0))
 
 # index for simulation
-index_transcriptome <- "/raid/genevol/geuvadis/salmon/ensembl.transcripts.fa" %>%
+index_transcriptome <- "../../indices/gencode.transcripts.fa" %>%
     readDNAStringSet()
 
 index <- c(index_transcriptome, hla_index)[pheno_matrix$tx_id]
@@ -287,6 +289,8 @@ writeXStringSet(index, "simulation_index.fa")
 
 # compute mean and sd of fragment length distribution
 fld <- scan("../../analysis/salmon/quant/66K00003_t1/libParams/flenDist.txt")
+    setnames(sprintf(
+    map(
 
 fld_params <- tibble(mu = sum(1:length(fld) * fld)) %>%
     mutate(sigma = sqrt(sum( ( (1:length(fld) - mu)^2 ) * (fld) )))
