@@ -271,7 +271,10 @@ hla_ground_truth <- hla_expression %>%
 final_quants <- hla_ground_truth %>%
     split(.$sampleid) %>%
     map(~select(., -sampleid)) %>%
-    map_df(~bind_rows(genome_background_quants, .), .id = "sampleid")
+    map_df(~bind_rows(genome_background_quants, .), .id = "sampleid") %>%
+    group_by(sampleid) %>%
+    mutate(readcount = as.integer(round(readcount/sum(readcount) * 3e7))) %>%
+    ungroup()
 
 pheno_matrix <- final_quants %>%
     pivot_wider(names_from = sampleid, values_from = readcount) %>%

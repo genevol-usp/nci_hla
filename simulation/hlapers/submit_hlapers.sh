@@ -12,13 +12,13 @@
 cd $PBS_O_WORKDIR
 
 SAMPLE=$( awk "FNR==$PBS_ARRAYID" ../samples.txt )
-BAM=/media/storage/genevol/vitor/bam/${SAMPLE}_Aligned.sortedByCoord.out.bam
+BAM=$HOME/simulation/bam/${SAMPLE}_Aligned.sortedByCoord.out.bam
 OUT=./genotypes/${SAMPLE}
 
 $HOME/Libraries/HLApers/hlapers bam2fq -b $BAM -m ./hladb/mhc_coords.txt -o $OUT
 
 INDEX=./index
-TRANSCRIPTS=./hladb/transcripts_HLAsupp.fa
+TRANSCRIPTS=./hladb/transcripts_MHC_HLAsupp.fa
 FQ1=./genotypes/${SAMPLE}_mhc_unmap_1.fq
 FQ2=./genotypes/${SAMPLE}_mhc_unmap_2.fq
 
@@ -28,8 +28,8 @@ $HOME/Libraries/HLApers/hlapers genotype -i $INDEX -t $TRANSCRIPTS \
 rm -r $FQ1 $FQ2 ${OUT}_log
 
 GENOTYPES=./genotypes/${SAMPLE}_genotypes.tsv
-FQ1=/scratch/vitor/simulation/${SAMPLE}/sample_01_1.fastq.gz
-FQ2=/scratch/vitor/simulation/${SAMPLE}/sample_01_2.fastq.gz
+FQ1=$HOME/simulation/fastq/${SAMPLE}/sample_01_1.fastq.gz
+FQ2=$HOME/simulation/fastq/${SAMPLE}/sample_01_2.fastq.gz
 OUTPREFIX=./quant/$SAMPLE
 
 $HOME/Libraries/HLApers/hlapers quant --salmonreads -t hladb -g $GENOTYPES \

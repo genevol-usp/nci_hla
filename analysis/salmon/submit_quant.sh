@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #PBS -l nodes=1:ppn=8
-#PBS -l mem=16gb
+#PBS -l mem=24gb
 #PBS -l walltime=24:00:00
 #PBS -q short
 #PBS -N Salmon-quant
@@ -11,7 +11,7 @@
 
 cd $PBS_O_WORKDIR
 
-INDEX=../../simulation/salmon-reads/index
+INDEX=../../indices/SALMON
 CPUS=$PBS_NUM_PPN 
 
 PHASE=$( awk -v ARRID="$PBS_ARRAYID" 'FNR==ARRID { print $1 }' ../samples.txt )

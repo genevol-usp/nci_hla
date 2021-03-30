@@ -10,4 +10,4 @@
 
 cd $PBS_O_WORKDIR
 
-salmon index -t ensembl.transcripts.fa -i index
+salmon index -t gencode.transcripts.fa -i SALMON

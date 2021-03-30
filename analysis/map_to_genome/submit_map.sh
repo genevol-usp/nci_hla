@@ -26,8 +26,8 @@ elif [[ "${#FQS1[@]}" -eq 2 ]]; then
 fi
 
 STAR=$HOME/HLAMAPPER/STAR-2.7.3a/bin/Linux_x86_64_static/STAR
-INDEX=../../simulation/map_to_genome/index
-OUT=/media/storage/genevol/vitor/bam_nci/${SAMPLE}_timepoint${PHASE}
+INDEX=../../indices/STAR
+OUT=./bam/${SAMPLE}_timepoint${PHASE}
 
 $STAR --runMode alignReads \
     --runThreadN $PBS_NUM_PPN \
@@ -39,8 +39,6 @@ $STAR --runMode alignReads \
     --outFilterMultimapNmax 20 \
     --outSAMtype BAM SortedByCoordinate \
     --outSAMunmapped Within KeepPairs \
-    --quantMode TranscriptomeSAM \
-    --quantTranscriptomeBan Singleend \
     --outFileNamePrefix ${OUT}_
 
 samtools index ${OUT}_Aligned.sortedByCoord.out.bam

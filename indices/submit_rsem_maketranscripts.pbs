@@ -2,7 +2,7 @@
 
 #PBS -l nodes=1:ppn=1
 #PBS -l mem=8gb
-#PBS -l walltime=01:00:00
+#PBS -l walltime=24:00:00
 #PBS -q short
 #PBS -N RSEM-prep-ref
 #PBS -j oe
@@ -10,10 +10,10 @@
 
 cd $PBS_O_WORKDIR
 
-genome=$HOME/hisat2/grch38_snp_tran/genome.fa
-gtf=$HOME/hisat2/grch38_snp_tran/Homo_sapiens.GRCh38.99.gtf
-out=./ensembl
+GENOME=$HOME/gencode/GRCh38.primary_assembly.genome.fa
+GTF=$HOME/gencode/gencode.v37.primary_assembly.annotation.gtf
+OUT=./gencode
 
-rsem-prepare-reference --gtf $gtf $genome $out
+rsem-prepare-reference --gtf $GTF $GENOME $OUT
 
-rm $out.grp $out.ti $out.chrlist $out.seq $out.idx.fa $out.n2g.idx.fa
+rm $OUT.grp $OUT.ti $OUT.chrlist $OUT.seq $OUT.idx.fa $OUT.n2g.idx.fa

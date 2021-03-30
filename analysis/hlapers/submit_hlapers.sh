@@ -2,10 +2,10 @@
 
 #PBS -l nodes=1:ppn=8
 #PBS -l mem=48gb
-#PBS -l walltime=48:00:00
-#PBS -q long
+#PBS -l walltime=24:00:00
+#PBS -q short
 #PBS -N HLApers
-#PBS -t 23,34,50,52,56,93,103
+#PBS -t 1-107
 #PBS -j oe
 #PBS -o log/$PBS_JOBNAME
 
@@ -14,14 +14,14 @@ cd $PBS_O_WORKDIR
 PHASE=$( awk -v ARRID="$PBS_ARRAYID" 'FNR==ARRID { print $1 }' ../samples.txt )
 SAMPLE=$( awk -v ARRID="$PBS_ARRAYID" 'FNR==ARRID { print $2 }' ../samples.txt )
 
-HLADB=../../simulation/hlapers/hladb
-BAM=/media/storage/genevol/vitor/bam_nci/${SAMPLE}_timepoint${PHASE}_Aligned.sortedByCoord.out.bam
+HLADB=../../indices/hladb
+BAM=/media/storage/genevol/vitor/nci/bam/${SAMPLE}_timepoint${PHASE}_Aligned.sortedByCoord.out.bam
 OUT=./genotypes/${SAMPLE}_t${PHASE}
 
 $HOME/Libraries/HLApers/hlapers bam2fq -b $BAM -m $HLADB/mhc_coords.txt -o $OUT
 
-INDEX=../../simulation/hlapers/index
-TRANSCRIPTS=$HLADB/transcripts_HLAsupp.fa
+INDEX=../../indices/HLAPERS
+TRANSCRIPTS=$HLADB/transcripts_MHC_HLAsupp.fa
 FQ1=${OUT}_mhc_unmap_1.fq
 FQ2=${OUT}_mhc_unmap_2.fq
 
