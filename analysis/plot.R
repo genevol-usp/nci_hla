@@ -24,14 +24,15 @@ gene_levels <- tpm_proportions %>%
 tpm_proportions <- tpm_proportions %>%
     mutate(gene = factor(gene, levels = gene_levels))
 
-mycols <- c("#ECCBAE", "#046C9A", "#D69C4E", "#ABDDDE",
-            "tomato3", "grey60", "#000000", "white")
+mycols <- c("white", "#046C9A", "#D69C4E", "#ABDDDE",
+            "tomato3", "grey60", "grey35", "#ECCBAE")
 
 p1 <- ggplot(tpm_proportions, aes(sampleid, prop, fill = gene)) +
-    geom_bar(stat = "identity", position = "fill", width = 0.95, alpha = .5) +
+    geom_bar(stat = "identity", position = "fill", width = 0.95, alpha = .75,
+             color = "grey85") +
     geom_text(aes(label = sub("%", "", scales::percent(prop, accuracy = 1))),
-	      size = 2.5, color = "grey25", fontface = "bold",
-	      position = position_stack(vjust = 0.5)) +
+              size = 2.5, color = "grey25", fontface = "bold",
+              position = position_stack(vjust = .85)) +
     scale_y_continuous(labels = scales::percent) +
     scale_fill_manual(values = mycols,
 		      guide = guide_legend(direction = "horizontal")) +
@@ -40,8 +41,7 @@ p1 <- ggplot(tpm_proportions, aes(sampleid, prop, fill = gene)) +
     theme(axis.text.y = element_blank(),
           axis.ticks.y = element_blank(),
           axis.title.y = element_blank(),
-          panel.grid = element_blank(),
-          legend.position = "top") +
+          panel.grid = element_blank()) +
     guides(fill = guide_legend(override.aes = list(color = "black"))) +
     labs(y = "% of whole gene expression", fill = "Gene")
           

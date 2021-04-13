@@ -27,6 +27,7 @@ nci_qpcr_lineage <- nci_qpcr %>%
 
 nci_rnaseq <- 
     read_tsv("./phase1/3-map_to_transcriptome/hla_quantifications.tsv") %>%
+    filter(locus %in% gencode_hla$gene_name) %>%
     mutate(allele = hla_trimnames(gsub("IMGT_", "", allele), 3)) %>%
     select(subject, locus, allele, tpm)
 
@@ -103,6 +104,42 @@ ggplot(gene_df, aes(tpm, mRNA)) +
           strip.text = element_text(face = "bold")) +
     labs(y = "qPCR", x = "RNA-seq")
 dev.off()
+
+####
+
+typing_errs <- read_tsv("./typings_nonconcordant.tsv") %>%
+    distinct(subject, locus) 
+
+gene_df_errs <- gene_df %>%
+    anti_join(typing_errs)
+
+cor_df_errs <- gene_df_errs %>%
+    group_by(locus) %>%
+    do(data.frame(rho = cor(.$tpm, .$mRNA, method = "spearman"),
+                  p = cor.test(.$tpm, .$mRNA, method = "spearman", exact = FALSE) %>% broom::tidy() %>% pull(p.value),
+                  x = max(.$tpm),
+                  y = max(.$mRNA))) %>%
+    ungroup() %>%
+    mutate(rho = round(rho, digits = 2),
+           p = scientific(p, digits = 1),
+           label = paste("rho ==", rho, "*', '~P ==", p)) 
+
+ggplot(gene_df_errs, aes(tpm, mRNA)) +
+    geom_point(size = .75) +
+    geom_smooth(method = lm, se = FALSE) +
+    scale_x_continuous(breaks = scales::pretty_breaks(3)) +
+    facet_wrap(~locus, scales = "free") +
+    geom_label(data = cor_df_errs, aes(x, y, label = label), 
+               parse = TRUE, hjust = "inward", vjust = "inward", size = 2.5, 
+               family = "Times",
+               label.padding = unit(0.05, "lines"), 
+               label.size = NA, alpha = 0.5) +
+    theme_bw() +
+    theme(text = element_text(size = 9, family = "Times"),
+          strip.text = element_text(face = "bold")) +
+    labs(y = "qPCR", x = "RNA-seq")
+
+####
 
 
 # Fig S1

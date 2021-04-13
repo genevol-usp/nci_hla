@@ -65,6 +65,7 @@ mapped_summary <- mapped_results %>%
 write_rds(mapped_summary, "../plot_data/mapped_reads_summary.rds")
 
 
+# Destination of simulated reads
 sam_simul <- sprintf("./quant/%s_simulReads.sam", samples) %>%
     setNames(samples) %>%
     map_df(~read_tsv(., col_names = paste0("X", 1:18)) %>%

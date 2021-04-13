@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=8gb
+#PBS -l walltime=24:00:00
+#PBS -q short
+#PBS -t 1-50
+#PBS -N getReadsIds
+#PBS -j oe
+#PBS -o log/$PBS_JOBNAME.log
+
+cd $PBS_O_WORKDIR
+
+SAMPLE=$( awk "FNR==$PBS_ARRAYID" ../samples.txt )
+OUT=$HOME/simulation/readids/${SAMPLE}.txt
+
+zcat $HOME/simulation/fastq/$SAMPLE/sample_01_1.fastq.gz |\
+    grep -E ^@read\[0-9\]+_ENST\[0-9.\]+_ |\
+    cut -d' ' -f1 |\
+    sed 's/^@//' > $OUT
