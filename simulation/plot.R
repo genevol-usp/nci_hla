@@ -1,4 +1,5 @@
 library(tidyverse)
+library(ggsci)
 library(ggthemes)
 library(ggridges)
 library(cowplot)
@@ -32,31 +33,9 @@ ggsave("./plots/personalized_identity.jpeg")
 
 # expression vs distance
 dist_df <- read_rds("./plot_data/weighted_distances.rds")
-tpm_rates <- read_rds("./plot_data/tpm_rates.rds")
+count_rates <- read_rds("./plot_data/count_rates.rds")
 
-plot_dist_df <- left_join(tpm_rates, dist_df, by = c("sampleid", "gene_name"))
-
-ggplot(plot_dist_df, aes(wdist, rate_tpm, color = method)) +
-    geom_hline(yintercept = 1L, linetype = 2, size = 1, color = "grey") +
-    geom_line(stat = "smooth", method = "loess", span = 1, se = FALSE, 
-              alpha = .4, size = 1, show.legend = FALSE) +
-    geom_point(size = 1, alpha = .75) +
-    scale_x_continuous(labels = function(x) scales::percent(x, accuracy = 1)) +
-    facet_wrap(~gene_name, scales = "free_x") +
-    scale_color_manual(values = c("Reference genome" = "black",
-                                  "HLApers" = "tomato3",
-                                  "hla-mapper::rna" = "cornflowerblue")) +
-    theme_bw() + 
-    theme(text = element_text(family = "Times"), 
-          strip.text = element_text(face = "bold"),
-          panel.grid = element_blank(),
-          legend.position = "top") +
-    labs(x = "Weighted sequence divergence to the HLA reference allele (%)", 
-         y = expression(frac(Estimated~TPM, True~TPM))) +
-    guides(color = guide_legend(override.aes = list(size = 5)))
-    
-ggsave("./plots/accuracy.jpeg")
-
+plot_dist_df <- left_join(count_rates, dist_df, by = c("sampleid", "gene_name"))
 
 ggplot(plot_dist_df, aes(wdist, rate_counts, color = method)) +
     geom_hline(yintercept = 1L, linetype = 2, size = 1, color = "grey") +
@@ -64,53 +43,50 @@ ggplot(plot_dist_df, aes(wdist, rate_counts, color = method)) +
               alpha = .4, size = 1, show.legend = FALSE) +
     geom_point(size = 1, alpha = .75) +
     scale_x_continuous(labels = function(x) scales::percent(x, accuracy = 1)) +
+    scale_color_colorblind() +
     facet_wrap(~gene_name, scales = "free_x") +
-    scale_color_manual(values = c("Reference genome" = "black",
-                                  "HLApers" = "tomato3",
-                                  "hla-mapper::rna" = "cornflowerblue")) +
     theme_bw() + 
     theme(text = element_text(family = "Times"), 
           strip.text = element_text(face = "bold"),
           panel.grid = element_blank(),
           legend.position = "top") +
     labs(x = "Weighted sequence divergence to the HLA reference allele (%)", 
-         y = expression(frac(Estimated~Counts, True~Counts))) +
+         y = expression(frac(Estimated~counts, True~counts))) +
     guides(color = guide_legend(override.aes = list(size = 5)))
+    
+ggsave("./plots/accuracy.jpeg")
 
 
-ggsave("./plots/accuracy_counts.jpeg")
-
-# Coverage
-
-coverage_df <- read_rds("./plot_data/coverage.rds") %>%
-    arrange(gene_name, i)
-
-exons_coords <- coverage_df %>%
-    group_by(gene_name, feature) %>%
-    summarise(start = min(i),
-              end = max(i)) %>%
-    ungroup() %>%
-    arrange(gene_name, start) %>%
-    mutate(manualcolor = ifelse(grepl("intron", feature), "0", "1"))
-
-ggplot(coverage_df, aes(i, cov, group = sampleid)) +
-    geom_rect(data = exons_coords,
-              aes(xmin = start, xmax = end, ymin = 0, ymax = Inf,
-                  fill = manualcolor), alpha = .2, 
-              inherit.aes = FALSE, show.legend = FALSE) +
-    scale_fill_manual(values = c("0" = NA, "1" = "orange")) +
-    geom_line(alpha = .5) +
-    facet_wrap(~gene_name, scales = "free", ncol = 1) +
-    theme_bw() +
-    theme(panel.grid = element_blank(),
-          axis.ticks.x = element_blank(),
-          axis.text.x = element_blank()) +
-    labs(x = NULL, y = "Read depth")
-
-ggsave("./plots/coverage.jpeg")
+# # Coverage
+# 
+# coverage_df <- read_rds("./plot_data/coverage.rds") %>%
+#     arrange(gene_name, i)
+# 
+# exons_coords <- coverage_df %>%
+#     group_by(gene_name, feature) %>%
+#     summarise(start = min(i),
+#               end = max(i)) %>%
+#     ungroup() %>%
+#     arrange(gene_name, start) %>%
+#     mutate(manualcolor = ifelse(grepl("intron", feature), "0", "1"))
+# 
+# ggplot(coverage_df, aes(i, cov, group = sampleid)) +
+#     geom_rect(data = exons_coords,
+#               aes(xmin = start, xmax = end, ymin = 0, ymax = Inf,
+#                   fill = manualcolor), alpha = .2, 
+#               inherit.aes = FALSE, show.legend = FALSE) +
+#     scale_fill_manual(values = c("0" = NA, "1" = "orange")) +
+#     geom_line(alpha = .5) +
+#     facet_wrap(~gene_name, scales = "free", ncol = 1) +
+#     theme_bw() +
+#     theme(panel.grid = element_blank(),
+#           axis.ticks.x = element_blank(),
+#           axis.text.x = element_blank()) +
+#     labs(x = NULL, y = "Read depth")
+# 
+# ggsave("./plots/coverage.jpeg")
 
 # hla-mapper mappings
-
 simul_reads <- read_rds("./plot_data/simul_reads_summary.rds") %>%
     mutate(mapped_gene = recode(mapped_gene, 
                                 "Unassigned_Unmapped" = "Unmap",

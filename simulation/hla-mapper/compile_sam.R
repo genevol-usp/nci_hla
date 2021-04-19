@@ -1,7 +1,6 @@
 library(tidyverse)
 
 # Annotations
-
 annot <- read_tsv("../../indices/transcript_annotation_df.tsv")
 
 tx_annot <- annot %>%
@@ -10,12 +9,11 @@ tx_annot <- annot %>%
 gene_annot <- annot %>%
     distinct(gene_id, gene_name)
 
-
 # Sample IDs
 samples <- readLines("../samples.txt")
 
 # Simulated reads
-reads_df <- sprintf("../make_simulation_data/readids/%s.txt", samples) %>%
+reads_df <- sprintf("~/simulation/readids/%s.txt", samples) %>%
     setNames(samples) %>%
     map_df(~readLines(.) %>% tibble(readname = .), .id = "sampleid")
 
