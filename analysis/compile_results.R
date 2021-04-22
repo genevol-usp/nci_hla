@@ -34,9 +34,25 @@ write_tsv(salmon_pers_bed, "./salmon-pers/quants.bed")
 
 
 
+# HLA allele-level expression
+salmon_allele <- salmon_pers %>%
+    filter(grepl("\\_[ABC]\\*", Name)) %>%
+    separate(Name, c("tx_id", "allele"), sep = "_") %>%
+    group_by(sampleid, allele) %>%
+    summarise(tpm = sum(TPM)) %>%
+    ungroup() %>%
+    mutate(gene_name = sub("^([^*]+).+$", "HLA-\\1", allele)) %>%
+    group_by(sampleid, gene_name) %>%
+    mutate(n = n_distinct(allele),
+	   zyg = case_when(n == 1L ~ "1_1",
+			   n == 2L ~ "1",
+			   TRUE ~ NA_character_)) %>%
+    ungroup() %>%
+    mutate(tpm = ifelse(zyg == "1_1", tpm/2L, tpm)) %>%
+    separate_rows(zyg, sep = "_") %>%
+    select(sampleid, gene_name, allele, tpm)
 
-
-
+write_rds(salmon_allele, "./plot_data/salmon_pers_allele.rds")
 
 
 
