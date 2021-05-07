@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
-SAMPLES=./sample_ids.txt
-BED=./salmon-pers/quants.bed
-OUT=./salmon-pers/quants_std.bed
+SAMPLES=$1
+BED=$2
+OUT=$( echo $BED | sed 's/\.bed/_std.bed/' )
 
 bgzip $BED && tabix -p bed $BED.gz
 

@@ -3,6 +3,7 @@ library(ggsci)
 library(ggthemes)
 library(ggridges)
 library(cowplot)
+library(scales)
 
 # simulated transcripts
 ident_df <- read_rds("./plot_data/simulated_transcript_identity.rds") %>%
@@ -41,21 +42,50 @@ ggplot(plot_dist_df, aes(wdist, rate_counts, color = method)) +
     geom_hline(yintercept = 1L, linetype = 2, size = 1, color = "grey") +
     geom_line(stat = "smooth", method = "loess", span = 1, se = FALSE, 
               alpha = .4, size = 1, show.legend = FALSE) +
-    geom_point(size = 1, alpha = .75) +
+    geom_point(size = 1, alpha = .5) +
     scale_x_continuous(labels = function(x) scales::percent(x, accuracy = 1)) +
-    scale_color_colorblind() +
+    scale_color_manual(values = c("Salmon ref genome" = "black",
+                                  "Salmon personalized" = "goldenrod4",
+                                  "HLApers" = "tomato4",
+                                  "hla-mapper::rna" = "midnightblue")) +
     facet_wrap(~gene_name, scales = "free_x") +
     theme_bw() + 
     theme(text = element_text(family = "Times"), 
-          strip.text = element_text(face = "bold"),
-          panel.grid = element_blank(),
-          legend.position = "top") +
+          panel.grid = element_blank()) +
     labs(x = "Weighted sequence divergence to the HLA reference allele (%)", 
          y = expression(frac(Estimated~counts, True~counts))) +
-    guides(color = guide_legend(override.aes = list(size = 5)))
+    guides(color = guide_legend(override.aes = list(size = 2.5)))
     
-ggsave("./plots/accuracy.jpeg")
+ggsave("./plots/accuracy.jpeg", width = 6.5, height = 2)
 
+
+# Salmon vs hla-mapper
+hla_quants <- read_rds("./plot_data/hla_est_counts.rds") %>%
+    filter(method %in% c("Salmon personalized", "hla-mapper::rna")) %>%
+    pivot_wider(names_from = method, values_from = counts)
+
+cor_hla <- hla_quants %>%
+    group_by(gene_name) %>%
+    summarise(y = max(`hla-mapper::rna`),
+              r = round(cor(`hla-mapper::rna`, `Salmon personalized`), 3),
+              rho = round(cor(`hla-mapper::rna`, `Salmon personalized`, 
+                              method = "spearman"), 3),
+              rho_lab = paste("r ==", r, "*', '~rho == ", rho)) %>%
+    ungroup()
+
+ggplot(hla_quants, aes(`Salmon personalized`, `hla-mapper::rna`)) +
+    geom_point() +
+    geom_text(data = cor_hla, aes(x = 0, y + (y *.1), label = rho_lab),
+              hjust = "inward", vjust = "inward", 
+              parse = TRUE,
+              size = 3) +
+    facet_wrap(~gene_name, scales = "free") +
+    scale_x_continuous(labels = comma, breaks = pretty_breaks(3)) + 
+    scale_y_continuous(labels = comma, breaks = pretty_breaks(3)) + 
+    theme_bw() +
+    theme(text = element_text(size = 8))
+
+ggsave("./plots/salmonpers_vs_hlamapper.jpeg", width = 6, height = 2)
 
 # # Coverage
 # 

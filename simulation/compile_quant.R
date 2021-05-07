@@ -41,7 +41,6 @@ write_rds(identity_df, "./plot_data/simulated_transcript_identity.rds")
 
 
 # transcript annotations
-
 annots <- read_tsv("../indices/transcript_annotation_df.tsv") %>%
     select(gene_id, gene_name, tx_id)
 
@@ -127,7 +126,7 @@ hlapers <- sprintf("./hlapers/quant/%s_quant/quant.sf", samples) %>%
     mutate_at(vars(counts, true_counts), ~replace_na(., 0))
 
 ## hla-mapper::rna
-hlamapper <- sprintf("./hla-mapper/quant/%s_counts.txt", samples) %>%
+hlamapper <- sprintf("./hla-mapper/quant/%s_gene.txt", samples) %>%
     setNames(samples) %>%
     map_df(~read_tsv(., comment = "#", col_types = "c----dd") %>% 
 	   select(gene_id = 1, len = 2, counts = 3), 
@@ -145,6 +144,12 @@ quant_df <-
 	      .id = "method") %>%
     mutate(method = factor(method, levels = unique(method)))
 
+hla_counts <- quant_df %>%
+    filter(gene_name %in% c("HLA-A", "HLA-B", "HLA-C")) %>%
+    select(method, sampleid, gene_name, counts) %>%
+    arrange(method, sampleid, gene_name)
+
+write_rds(hla_counts, "./plot_data/hla_est_counts.rds")
 
 # Assess accuracy
 

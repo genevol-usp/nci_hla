@@ -62,7 +62,6 @@ mapped_summary <- mapped_results %>%
 
 write_rds(mapped_summary, "../plot_data/mapped_reads_summary.rds")
 
-
 # Destination of simulated reads
 sam_simul <- sprintf("./quant/%s_simulReads.sam", samples) %>%
     setNames(samples) %>%
@@ -119,3 +118,13 @@ simul_summary <- simul_results %>%
 
 
 write_rds(simul_summary, "../plot_data/simul_reads_summary.rds")
+
+
+# read errors 
+read_errors <- 
+    bind_rows(filter(mapped_results, sampleid == "66K00048", true_gene != mapped_gene),
+	      filter(simul_results, sampleid == "66K00048", true_gene != mapped_gene)) %>%
+    distinct() %>%
+    arrange(readname)
+
+
