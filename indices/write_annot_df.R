@@ -22,6 +22,7 @@ hla_exon_annots <- annots %>%
     filter(X3 == "exon") %>%
     transmute(gene_id = str_extract(X9, "(?<=gene_id\\s\")[^\"]+"),
 	      gene_name = str_extract(X9, "(?<=gene_name\\s\")[^\"]+"),
+	      tx_id = str_extract(X9, "(?<=transcript_id\\s\")[^\"]+"),
 	      exon_id = str_extract(X9, "(?<=exon_id\\s\")[^\"]+"),
 	      start = X4, end = X5, strand = X7) %>%
     filter(gene_name %in% c("HLA-A", "HLA-B", "HLA-C"))

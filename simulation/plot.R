@@ -4,6 +4,7 @@ library(ggthemes)
 library(ggridges)
 library(cowplot)
 library(scales)
+library(tidytext)
 
 # simulated transcripts
 ident_df <- read_rds("./plot_data/simulated_transcript_identity.rds") %>%
@@ -128,26 +129,65 @@ simul_reads <- read_rds("./plot_data/simul_reads_summary.rds") %>%
 
 mapped_reads <- read_rds("./plot_data/mapped_reads_summary.rds")
 
-reads_plot_1 <- ggplot(simul_reads, aes(true_gene, mapped_gene)) +
-    geom_point(aes(size = prop, color = prop)) +
-    scale_color_continuous("", 
-                          labels = scales::percent, 
-                          breaks = seq(0, 1, by = 0.25),
-                          limits = c(0, 1)) +
-    scale_size(guide = "none") +
-    labs(x = "True Gene", y = "Mapped Gene", 
-         title = "Destination of simulated reads")
-    
-reads_plot_2 <- ggplot(mapped_reads, aes(mapped_gene, true_gene)) +
-    geom_point(aes(size = prop, color = prop)) +
+mapper_1 <- ggplot(mapped_reads, aes(mapped_gene, true_gene)) +
+    geom_point(aes(size = prop)) +
     scale_color_continuous("", 
                            labels = scales::percent, 
                            breaks = seq(0, 1, by = 0.25),
                            limits = c(0, 1)) +
     scale_size(guide = "none") +
-    labs(x = "Mapped Gene", y = "True Gene", 
-         title = "Origin of reads mapped to HLA-A, -B and -C")
+    theme(plot.margin = unit(c(0.5, 0.5, 0.5, 1), "cm")) +
+    labs(x = "Mapped Gene", y = "True Gene")
 
-plot_grid(reads_plot_1, reads_plot_2, nrow = 2, rel_heights = c(1, .5))
 
-ggsave("./plots/hlamapper_mappings.jpeg", height = 5, width = 6)
+mapper_2 <- simul_reads %>%
+    filter(prop > 0.0001) %>%
+    ggplot(aes(x = reorder_within(mapped_gene, desc(prop), true_gene), 
+               y = prop)) +
+    geom_col() +
+    facet_wrap(~true_gene, scales = "free_x") +
+    scale_x_discrete(labels = function(x) str_extract(x, "^([^_]+)")) + 
+    scale_y_continuous(labels = percent) +
+    theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
+          plot.margin = unit(c(0.5, 0.5, 0.5, 1), "cm")) +
+    labs(x = NULL, y = " ")
+
+
+subread_summary <- read_rds("./plot_data/summary_subread_mappings.rds") %>%
+    mutate(mapped_gene = recode(mapped_gene, 
+                                "Unassigned_Unmapped" = "Unmap",
+                                "Unassigned_Secondary" = "2nd",
+                                "Unassigned_Ambiguity" = "Ambig",
+                                "Not present in SAM" = "Not in SAM"))
+
+mapped_levels <- subread_summary %>% 
+    group_by(mapped_gene) %>% 
+    summarise(prop = mean(prop)) %>%
+    ungroup() %>% 
+    arrange(desc(prop)) %>%
+    pull(mapped_gene)
+
+mapper_3 <- subread_summary %>%
+    mutate(mapped_gene = factor(mapped_gene, levels = mapped_levels)) %>%
+    ggplot(aes(i, prop, fill = mapped_gene)) +
+    geom_col(width = 1) +
+    facet_wrap(~gene_name, ncol = 1, scales = "free_x") +
+    scale_y_continuous(labels = percent) +
+    scale_fill_npg() +
+    theme_minimal() +
+    theme(panel.grid = element_blank(),
+          panel.spacing = unit(0, "lines"),
+          axis.text = element_blank(), 
+          strip.background = element_rect(fill = "grey70"),
+          plot.margin = unit(c(0,0,0,1), "cm")) +
+    labs(x = NULL, y = NULL)
+
+
+plot_grid(mapper_1, 
+          mapper_2, 
+          mapper_3, 
+          ncol = 1, 
+          rel_heights = c(.5, .5, 1),
+          labels = c("A)", "B)", "C)"))
+
+ggsave("./plots/hlamapper_mappings.jpeg", height = 8, width = 6)

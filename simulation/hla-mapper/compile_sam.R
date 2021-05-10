@@ -116,9 +116,8 @@ simul_summary <- simul_results %>%
     summarise(prop = mean(prop)) %>%
     ungroup()
 
-
+write_rds(simul_results, "./simulated_reads_mappings.rds")
 write_rds(simul_summary, "../plot_data/simul_reads_summary.rds")
-
 
 # read errors 
 read_errors <- 
@@ -126,5 +125,4 @@ read_errors <-
 	      filter(simul_results, sampleid == "66K00048", true_gene != mapped_gene)) %>%
     distinct() %>%
     arrange(readname)
-
 
