@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+
+#PBS -l nodes=1:ppn=8
+#PBS -l mem=36gb
+#PBS -l walltime=24:00:00
+#PBS -q short
+#PBS -t 1-125
+#PBS -N STAR1st
+#PBS -j oe
+#PBS -o /home/vitor/log/$PBS_JOBNAME
+
+cd $PBS_O_WORKDIR
+
+FQLIST=./fastq_list.txt
+
+SAMPLEID=$( awk -v ARRID="$PBS_ARRAYID" 'FNR==ARRID { print $1 }' $FQLIST )
+FQ1=$( awk -v ARRID="$PBS_ARRAYID" 'FNR==ARRID { print $2 }' $FQLIST )
+FQ2=$( awk -v ARRID="$PBS_ARRAYID" 'FNR==ARRID { print $3 }' $FQLIST )
+
+INDEX=./INDEX
+OUTDIR=./results/star/pass_1st
+OUT=${OUTDIR}/${SAMPLEID}
+
+mkdir -p $OUTDIR
+
+STAR --runMode alignReads \
+    --runThreadN $PBS_NUM_PPN \
+    --genomeDir $INDEX \
+    --readFilesIn $FQ1 $FQ2 \
+    --readFilesCommand zcat  \
+    --outFilterMismatchNoverReadLmax 0.04 \
+    --outFilterType BySJout \
+    --outSJfilterReads Unique \
+    --outSJfilterCountUniqueMin 6 2 2 2 \
+    --outSAMtype None \
+    --outFileNamePrefix ${OUT}_
