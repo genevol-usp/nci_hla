@@ -27,7 +27,7 @@ FQ2=$( awk -v ARRID="$PBS_ARRAYID" 'FNR==ARRID { print $3 }' $FQLIST )
 
 # Index and output
 INDEX=./INDEX
-OUTDIR=./results/star/pass_2nd
+OUTDIR=/scratch/vitor/results/star/pass_2nd
 OUT=${OUTDIR}/${SAMPLEID}
 
 mkdir -p $OUTDIR
