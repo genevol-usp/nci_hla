@@ -1,0 +1,95 @@
+#! /usr/bin/env bash
+
+#PBS -l nodes=1:ppn=8
+#PBS -l mem=32gb
+#PBS -l walltime=24:00:00
+#PBS -q short
+#PBS -t 1-125
+#PBS -N GATK
+#PBS -j oe
+#PBS -o /home/vitor/log/$PBS_JOBNAME
+
+
+FQLIST=/home/vitor/nci_hla/analysis/variant_calling/fastq_list.txt
+
+SAMPLE=$( awk -v ARRID="$PBS_ARRAYID" 'FNR==ARRID { print $1 }' $FQLIST )
+ID=$( echo $SAMPLE | cut -d'_' -f1 )
+BAM=/scratch/vitor/results/star/pass_2nd/${SAMPLE}_Aligned.sortedByCoord.out.bam
+BAMUNIQ=/scratch/vitor/results/star/pass_2nd/${SAMPLE}_uniq.bam
+OUTDIR=/scratch/vitor/results/gatk
+PREFIX=${OUTDIR}/${SAMPLE}
+
+mkdir -p $OUTDIR
+
+samtools view -b -h -q 255 $BAM > $BAMUNIQ
+
+# Add a read group to the BAM file
+OUT=${PREFIX}_rg.bam 
+
+java -jar /usr/bin/picard.jar AddOrReplaceReadGroups \
+    I=$BAMUNIQ \
+    O=$OUT \
+    RGID=readGroup${PBS_ARRAYID} \
+    RGLB=libraryID \
+    RGPL=ILLUMINA \
+    RGPU=HiSeq \
+    RGSM=$ID \
+    --TMP_DIR=/scratch/vitor/temp \
+
+# Mark duplicated reads
+OUT2=${PREFIX}_mkdups.bam 
+
+gatk MarkDuplicatesSpark \
+    -I $OUT \
+    -O $OUT2 \
+    -M ${PREFIX}_metrics.txt \
+    --tmp-dir /scratch/vitor/temp \
+    --spark-master local[$PBS_NUM_PPN]
+
+rm $OUT
+
+# Split'N'Trim and reassign mapping qualities
+GENOME=/raid/genevol/gencode/GRCh38.primary_assembly.genome.fa
+OUT3=${PREFIX}_splitn.bam
+
+if [[ ! -f "$GENOME" ]]; then
+    zcat ${GENOME}.gz > $GENOME
+fi
+
+if [[ ! -f "$GENOME".fai ]]; then
+    samtools faidx $GENOME
+fi
+
+if [[ ! -f "$GENOME".dict ]]; then
+    GATK CreateSequenceDictionary -R $GENOME
+fi
+
+gatk SplitNCigarReads \
+    -R $GENOME \
+    -I $OUT2 \
+    -O $OUT3 \
+    --tmp-dir /scratch/vitor/temp
+
+rm $OUT2
+
+# Base Recalibration
+DBSNP=home/vitor/nci_hla/analysis/variant_calling/dbsnp_155.hg38pri.vcf.gz
+
+gatk BaseRecalibrator \
+    -R $GENOME \
+    -I $OUT3 \
+    -O ${PREFIX}_bqsr.report \
+    --known-sites $DBSNP \
+    --tmp-dir /scratch/vitor/temp
+
+# Apply recallibration
+OUT4=${PREFIX}_recal.bam 
+
+gatk ApplyBQSR \
+    -R $GENOME \
+    -I $OUT3 \
+    -O $OUT4 \
+    --bqsr-recal-file ${PREFIX}_bqsr.report \
+    --tmp-dir /scratch/vitor/temp
+
+rm $OUT3
