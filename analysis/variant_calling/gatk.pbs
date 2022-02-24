@@ -1,13 +1,13 @@
 #! /usr/bin/env bash
 
-#PBS -l nodes=1:ppn=8
+#PBS -l nodes=1:ppn=4
 #PBS -l mem=32gb
-#PBS -l walltime=24:00:00
-#PBS -q short
+#PBS -l walltime=72:00:00
+#PBS -q long
 #PBS -t 1-125
 #PBS -N GATK
 #PBS -j oe
-#PBS -o /home/vitor/log/$PBS_JOBNAME
+#PBS -o /raid/genevol/users/vitor/log/${PBS_JOBNAME}
 
 
 FQLIST=/home/vitor/nci_hla/analysis/variant_calling/fastq_list.txt
@@ -15,13 +15,13 @@ FQLIST=/home/vitor/nci_hla/analysis/variant_calling/fastq_list.txt
 SAMPLE=$( awk -v ARRID="$PBS_ARRAYID" 'FNR==ARRID { print $1 }' $FQLIST )
 ID=$( echo $SAMPLE | cut -d'_' -f1 )
 BAM=/scratch/vitor/results/star/pass_2nd/${SAMPLE}_Aligned.sortedByCoord.out.bam
-BAMUNIQ=/scratch/vitor/results/star/pass_2nd/${SAMPLE}_uniq.bam
 OUTDIR=/scratch/vitor/results/gatk
 PREFIX=${OUTDIR}/${SAMPLE}
 
 mkdir -p $OUTDIR
 
-samtools view -b -h -q 255 $BAM > $BAMUNIQ
+BAMUNIQ=${PREFIX}_uniq.bam
+samtools view -@ $PBS_NUM_PPN -b -h -q 255 $BAM > $BAMUNIQ
 
 # Add a read group to the BAM file
 OUT=${PREFIX}_rg.bam 
@@ -34,7 +34,9 @@ java -jar /usr/bin/picard.jar AddOrReplaceReadGroups \
     RGPL=ILLUMINA \
     RGPU=HiSeq \
     RGSM=$ID \
-    --TMP_DIR=/scratch/vitor/temp \
+    TMP_DIR=/scratch/vitor/temp
+
+rm $BAMUNIQ
 
 # Mark duplicated reads
 OUT2=${PREFIX}_mkdups.bam 
@@ -61,7 +63,7 @@ if [[ ! -f "$GENOME".fai ]]; then
 fi
 
 if [[ ! -f "$GENOME".dict ]]; then
-    GATK CreateSequenceDictionary -R $GENOME
+    gatk CreateSequenceDictionary -R $GENOME
 fi
 
 gatk SplitNCigarReads \
@@ -73,7 +75,7 @@ gatk SplitNCigarReads \
 rm $OUT2
 
 # Base Recalibration
-DBSNP=home/vitor/nci_hla/analysis/variant_calling/dbsnp_155.hg38pri.vcf.gz
+DBSNP=/home/vitor/nci_hla/analysis/variant_calling/dbsnp_155.hg38pri.vcf.gz
 
 gatk BaseRecalibrator \
     -R $GENOME \
