@@ -1,0 +1,39 @@
+#! /usr/bin/env bash
+
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=32gb
+#PBS -l walltime=96:00:00
+#PBS -q long
+#PBS -t 1
+#PBS -N HapCall
+#PBS -j oe
+#PBS -o /scratch/vitor/${PBS_JOBNAME}
+
+# IO
+ARRAYDESIGN=${PBS_O_WORKDIR}/array_chr6.txt
+BAMLIST=${PBS_O_WORKDIR}/bam_list.txt
+ID=$( awk -v ARRID="$PBS_ARRAYID" 'FNR==ARRID { print $1 }' $ARRAYDESIGN )
+CHR=$( awk -v ARRID="$PBS_ARRAYID" 'FNR==ARRID { print $2 }' $ARRAYDESIGN )
+BAMS=$( awk -v ARRID="$ID" '$1 ~ ARRID { print $2 }' $BAMLIST )
+BAMSARR=( ${BAMS//,/ } )
+
+GENOME=/raid/genevol/gencode/GRCh38.primary_assembly.genome.fa
+OUTDIR=${PBS_O_WORKDIR}/results/gatk 
+PREFIX=${OUTDIR}/${ID}.${CHR}
+MERGED=/scratch/vitor/${ID}.${CHR}.merged.bam
+VCF=${PREFIX}.vcf.gz
+
+samtools merge -@ $PBS_NUM_PPN -R $CHR $MERGED "${BAMSARR[@]}"
+samtools index -@ $PBS_NUM_PPN $MERGED
+
+# HaplotypeCaller
+gatk HaplotypeCaller \
+    -R $GENOME \
+    -I $MERGED \
+    -O $VCF \
+    --dont-use-soft-clipped-bases true \
+    -stand-call-conf 30 \
+    --native-pair-hmm-threads $PBS_NUM_PPN \
+    --tmp-dir /scratch/vitor/temp
+
+rm $MERGED ${MERGED}.bai

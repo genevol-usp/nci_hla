@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+
+#PBS -l nodes=1:ppn=8
+#PBS -l mem=48gb
+#PBS -l walltime=96:00:00
+#PBS -q long
+#PBS -t 1-114
+#PBS -N STARWASP
+#PBS -j oe
+#PBS -o /scratch/vitor/$PBS_JOBNAME
+
+
+FQLIST=${PBS_O_WORKDIR}/fastq_list.txt
+SAMPLE=$( awk -v ARRID="$PBS_ARRAYID" 'FNR==ARRID { print $1 }' $FQLIST )
+ID=$( echo $SAMPLE | cut -d'_' -f1 )
+FQ1=$( awk -v ARRID="$PBS_ARRAYID" 'FNR==ARRID { print $2 }' $FQLIST )
+FQ2=$( awk -v ARRID="$PBS_ARRAYID" 'FNR==ARRID { print $3 }' $FQLIST )
+STAR1ST=${PBS_O_WORKDIR}/results/star/pass_1st
+SJDB=$( find $STAR1ST -name "*SJ.out.tab" )
+VCF=${PBS_O_WORKDIR}/results/gatk/${ID}.chr6.vcf.gz
+INDEX=${PBS_O_WORKDIR}/INDEX
+OUTDIR=/scratch/vitor/results/star/pass_wasp
+OUT=${OUTDIR}/${SAMPLE}
+
+mkdir -p $OUTDIR
+
+STAR --runMode alignReads \
+    --runThreadN $PBS_NUM_PPN \
+    --genomeDir $INDEX \
+    --readFilesIn $FQ1 $FQ2 \
+    --readFilesCommand zcat  \
+    --outFilterMismatchNoverReadLmax 0.04 \
+    --sjdbFileChrStartEnd $SJDB \
+    --varVCFfile <( zcat $VCF ) \
+    --waspOutputMode SAMtag \
+    --outSAMattributes vA vG vW \
+    --outSAMtype BAM SortedByCoordinate \
+    --outFileNamePrefix ${OUT}_
+

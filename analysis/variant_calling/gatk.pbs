@@ -2,15 +2,15 @@
 
 #PBS -l nodes=1:ppn=4
 #PBS -l mem=32gb
-#PBS -l walltime=72:00:00
+#PBS -l walltime=96:00:00
 #PBS -q long
-#PBS -t 1-125
+#PBS -t 2,9,20,75,77,78,83,93,99
 #PBS -N GATK
 #PBS -j oe
 #PBS -o /raid/genevol/users/vitor/log/${PBS_JOBNAME}
 
 
-FQLIST=/home/vitor/nci_hla/analysis/variant_calling/fastq_list.txt
+FQLIST=${PBS_O_WORKDIR}/fastq_list.txt
 
 SAMPLE=$( awk -v ARRID="$PBS_ARRAYID" 'FNR==ARRID { print $1 }' $FQLIST )
 ID=$( echo $SAMPLE | cut -d'_' -f1 )

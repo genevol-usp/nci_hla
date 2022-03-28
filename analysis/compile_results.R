@@ -34,18 +34,28 @@ sub("_t\\d$", "", sample_ids[1:96]) %>%
     write_lines("./sample_ids_t1.txt")
 
 
+salmon_ref_tx <- salmon_ref %>%
+    group_by(tx_id = Name) %>%
+    summarise(tpm = mean(TPM),
+	      efflen = mean(EffectiveLength)) %>%
+    ungroup()
+
+write_rds(salmon_ref_tx, "./plot_data/salmon_ref_tx_summary.rds")
+
+
 
 ###############################################################################
 # Salmon Pers 
 salmon_pers <- file.path("./salmon-pers/quant", sample_ids, "quant.sf") %>%
     setNames(sample_ids) %>%
-    map_df(read_tsv, .id = "sampleid")
+    map_df(read_tsv, .id = "sampleid") %>%
+    mutate(tx_id = ifelse(grepl("\\_[ABC]\\*", Name), 
+                          sub("^([^_]+).*$", "\\1", Name),
+                          Name)) %>%
+    left_join(tx_annots, by = "tx_id") %>%
+    select(sampleid, Name, tx_id, gene_id, gene_name, EffectiveLength, NumReads, TPM)
 
 salmon_pers_gene <- salmon_pers %>% 
-    mutate(tx_id = ifelse(grepl("\\_[ABC]\\*", Name), 
-			  sub("^([^_]+).*$", "\\1", Name),
-			  Name)) %>%
-    left_join(tx_annots, by = "tx_id") %>%
     group_by(sampleid, gene_id, gene_name) %>%
     summarise(tpm = sum(TPM)) %>%
     ungroup()
@@ -54,10 +64,24 @@ salmon_pers_bed <- salmon_pers_gene %>%
     pivot_wider(names_from = sampleid, values_from = tpm) %>%
     left_join(gene_annots, by = c("gene_id", "gene_name")) %>%
     mutate(chr = factor(chr, levels = unique(gene_annots$chr))) %>%
-    select(`#chr` = chr, start, end, id = gene_name, gid = gene_id, strd = strand, starts_with("66K")) %>%
+    select(`#chr` = chr, start, end, id = gene_name, gid = gene_id, strd = strand, 
+	   starts_with("66K")) %>%
     arrange(`#chr`, start)
 
 write_tsv(salmon_pers_bed, "./salmon-pers/quants.bed")
+
+covars <- tibble(ids = sample_ids) %>%
+    mutate(batch = sub("^66K\\d+_(t[12])$", "\\1", ids)) %>%
+    arrange(ids) %>%
+    pivot_longer(-ids, names_to = "id") %>%
+    pivot_wider(names_from = ids, values_from = value)
+
+write_tsv(covars, "./salmon-pers/technical_covars.txt")
+
+salmon_pers %>%
+    filter(gene_name %in% c("HLA-A", "HLA-B", "HLA-C")) %>%
+    write_tsv("./plot_data/salmon_pers_hla_isoforms.tsv")
+
 
 # B2M normalization
 salmon_pers_b2m <- salmon_pers %>% 
@@ -82,40 +106,64 @@ write_rds(salmon_pers_b2m, "./plot_data/salmon_pers_b2m.rds")
 
 # HLA allele-level expression
 salmon_allele <- salmon_pers %>%
+    group_by(sampleid) %>%
+    mutate(cpm = NumReads/sum(NumReads) * 1e6) %>%
+    ungroup() %>%
     filter(grepl("\\_[ABC]\\*", Name)) %>%
-    separate(Name, c("tx_id", "allele"), sep = "_") %>%
+    extract(Name, "allele", ".+_(.+)") %>%
     group_by(sampleid, allele) %>%
-    summarise(tpm = sum(TPM)) %>%
+    summarise(cpm = sum(cpm),
+              tpm = sum(TPM)) %>%
     ungroup() %>%
     mutate(gene_name = sub("^([^*]+).+$", "HLA-\\1", allele)) %>%
     group_by(sampleid, gene_name) %>%
     mutate(n = n_distinct(allele),
-	   zyg = case_when(n == 1L ~ "1_1",
-			   n == 2L ~ "1",
-			   TRUE ~ NA_character_)) %>%
+           zyg = case_when(n == 1L ~ "1_1",
+                           n == 2L ~ "1",
+                           TRUE ~ NA_character_)) %>%
     ungroup() %>%
-    mutate(tpm = ifelse(zyg == "1_1", tpm/2L, tpm)) %>%
+    mutate(cpm = ifelse(zyg == "1_1", cpm/2L, cpm),
+           tpm = ifelse(zyg == "1_1", tpm/2L, tpm)) %>%
     separate_rows(zyg, sep = "_") %>%
-    select(sampleid, gene_name, allele, tpm)
+    select(sampleid, gene_name, allele, cpm, tpm)
 
 write_rds(salmon_allele, "./plot_data/salmon_pers_allele.rds")
 
+# HLApers
+file.path("./hlapers/quant", sample_ids, "quant.sf") %>%
+    setNames(sample_ids) %>% .[1] %>%
+    map_df(read_tsv, .id = "sampleid")
+
+
+
+
+
 ###############################################################################
 # hla-mapper
-
-annots_subset <- gene_annots %>%
-    filter(gene_name %in% c("HLA-A", "HLA-B", "HLA-C", "B2M")) %>%
-    select(gene_id, gene_name)
-
-hlamapper <- "./hla-mapper/quant/%s_gene.txt" %>%
+hlamapper_all <- "./hla-mapper/quant/%s_gene_rmPseudo.txt" %>%
     sprintf(sample_ids[1:96]) %>%
-    setNames(sample_ids[1:96]) %>%
+    setNames(sub("_t\\d$", "", sample_ids[1:96])) %>%
     map_df(~read_tsv(., comment = "#") %>%
-	   inner_join(annots_subset, by = c("Geneid" = "gene_id")) %>%
-	   select(gene_name, counts = contains("66K")), .id = "sampleid") %>%
-    mutate(sampleid = sub("_t\\d$", "", sampleid))
+	   select(gene_id = Geneid, Length, counts = contains("66K")) %>%
+	   mutate(rate = log(counts) - log(Length),
+		  denom = log(sum(exp(rate))),
+		  tpm = exp(rate - denom + log(1e6))) %>%
+	   select(gene_id, Length, counts, tpm),
+           .id = "sampleid")
     
+hlamapper_bed <- hlamapper_all %>%
+    select(sampleid, gene_id, tpm) %>%
+    pivot_wider(names_from = sampleid, values_from = tpm) %>%
+    left_join(gene_annots, by = "gene_id") %>%
+    mutate(chr = factor(chr, levels = unique(gene_annots$chr))) %>%
+    select(`#chr` = chr, start, end, id = gene_name, gid = gene_id, strd = strand, starts_with("66K")) %>%
+    arrange(`#chr`, start)
 
+write_tsv(hlamapper_bed, "./hla-mapper/quants.bed")
+
+hlamapper <- hlamapper_all %>%
+    filter(gene_name %in% c("HLA-A", "HLA-B", "HLA-C")) %>%
+    select(sampleid, gene_name, counts)
 
 # Exon-based quants
 hlamatch <- read_tsv("../indices/personalize_transcripts/genome_match.tsv") %>%

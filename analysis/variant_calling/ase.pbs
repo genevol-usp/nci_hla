@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=8gb
+#PBS -l walltime=24:00:00
+#PBS -q short
+#PBS -t 1-96
+#PBS -N ASE
+#PBS -j oe
+#PBS -o /scratch/vitor/$PBS_JOBNAME
+
+BAMLIST=${PBS_O_WORKDIR}/bam_ase_list.txt
+ID=$( awk -v ARRID="$PBS_ARRAYID" 'FNR==ARRID { print $1 }' $BAMLIST)
+BAMS=$( awk -v ARRID="$PBS_ARRAYID" 'FNR==ARRID { print $2 }' $BAMLIST) 
+BAMARRAY=( ${BAMS//,/ } )
+BAMMERGED=/scratch/vitor/${ID}.merged.bam 
+GENOME=/raid/genevol/gencode/GRCh38.primary_assembly.genome.fa
+VCF=${PBS_O_WORKDIR}/results/gatk/${ID}.chr6.vcf.gz
+VCFSNP=${PBS_O_WORKDIR}/results/gatk/${ID}.chr6.snp.vcf.gz 
+OUTDIR=${PBS_O_WORKDIR}/results/ase
+OUT=${OUTDIR}/${ID}.ase.txt
+
+mkdir -p $OUTDIR
+
+samtools merge -f $BAMMERGED "${BAMARRAY[@]}"
+samtools index $BAMMERGED
+
+bcftools view -v snps -m2 -M2 --genotype ^hom -O z -o $VCFSNP $VCF
+tabix -p vcf $VCFSNP
+
+gatk ASEReadCounter \
+    -R $GENOME \
+    -I $BAMMERGED \
+    -V $VCFSNP \
+    -O $OUT \
+    -min-depth 10
