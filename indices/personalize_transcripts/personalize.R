@@ -33,7 +33,7 @@ loci <- c("A", "B", "C")
 IMGTDB <- "/home/vitor/IMGTHLA"
 
 # Gene annotations
-annots <- "/home/vitor/gencode/gencode.v37.primary_assembly.annotation.gtf" %>% 
+annots <- "/raid/genevol/gencode/gencode.v37.primary_assembly.annotation.gtf" %>% 
     read_tsv(comment = "#", col_names = FALSE, col_types = "c-cii-c-c")
 
 gene_annots <- annots %>%
@@ -57,7 +57,7 @@ hlaset <- gsub("[+-]", "", hlagen$cds) %>%
     DNAStringSet() %>%
     setNames(hlagen$allele)
 
-genome <- readDNAStringSet("/home/vitor/gencode/GRCh38.primary_assembly.genome.fa")
+genome <- readDNAStringSet("/raid/genevol/gencode/GRCh38.primary_assembly.genome.fa")
 
 mhc <- subseq(genome["chr6 6"], 29e6, 32e6)
 
@@ -122,6 +122,7 @@ positions_all <- hlagen_cds_split %>%
     filter(cds != "+", status  == "known") %>%
     select(-status)
 
+write_rds(positions_all, "./hla_allele_genome_map.rds")
 
 # transcripts
 hla_transcripts_annot <- annots %>%
