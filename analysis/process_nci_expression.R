@@ -118,27 +118,27 @@ c_expr_dbl %>%
 
 a_final <- a_expr_dbl %>%
     distinct(sampleid, .keep_all = TRUE) %>%
-    select(sampleid, A1, A2, rna = predicted_adj) %>%
+    select(sampleid, A1, A2, rna = predicted, rna_adj = predicted_adj) %>%
     pivot_longer(A1:A2, names_to = "gene_name", values_to = "allele") %>%
     mutate(gene_name = paste0("HLA-", gene_name),
            gene_name = sub("\\d$", "", gene_name)) %>%
-    select(sampleid, gene_name, allele, rna)
+    select(sampleid, gene_name, allele, rna, rna_adj)
 
 b_final <- b_expr_dbl %>%
     distinct(sampleid, .keep_all = TRUE) %>%
-    select(sampleid, B1, B2, rna = predicted) %>%
+    select(sampleid, B1, B2, rna = predicted, rna_adj = predicted) %>%
     pivot_longer(B1:B2, names_to = "gene_name", values_to = "allele") %>%
     mutate(gene_name = paste0("HLA-", gene_name),
            gene_name = sub("\\d$", "", gene_name)) %>%
-    select(sampleid, gene_name, allele, rna)
+    select(sampleid, gene_name, allele, rna, rna_adj)
     
 c_final <- c_expr_dbl %>%
     distinct(sampleid, .keep_all = TRUE) %>%
-    select(sampleid, C1, C2, rna = predicted) %>%
+    select(sampleid, C1, C2, rna = predicted, rna_adj = predicted) %>%
     pivot_longer(C1:C2, names_to = "gene_name", values_to = "allele") %>%
     mutate(gene_name = paste0("HLA-", gene_name),
            gene_name = sub("\\d$", "", gene_name)) %>%
-    select(sampleid, gene_name, allele, rna)
+    select(sampleid, gene_name, allele, rna, rna_adj)
 
 final_df <- bind_rows(a_final, b_final, c_final) %>%
     arrange(sampleid, gene_name)

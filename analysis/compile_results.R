@@ -42,7 +42,28 @@ salmon_ref_tx <- salmon_ref %>%
 
 write_rds(salmon_ref_tx, "./plot_data/salmon_ref_tx_summary.rds")
 
+###############################################################################
+# Salmon hla-mapper
+sample_ids_t1 <- read_lines("./sample_ids_t1.txt")
 
+salmon_mapper <- file.path("./pipeline_results/salmon", sample_ids_t1 , "quant.sf") %>%
+    setNames(sample_ids_t1) %>%
+    map_df(read_tsv, .id = "sampleid") 
+
+salmon_mapper_genes <- salmon_mapper %>%
+    left_join(tx_annots, by = c("Name" = "tx_id")) %>%
+    group_by(sampleid, gene_id, gene_name) %>%
+    summarise(tpm = sum(TPM)) %>%
+    ungroup()
+	   
+salmon_mapper_bed <- salmon_mapper_genes %>%
+    pivot_wider(names_from = sampleid, values_from = tpm) %>%
+    left_join(gene_annots, by = c("gene_id", "gene_name")) %>%
+    mutate(chr = factor(chr, levels = unique(gene_annots$chr))) %>%
+    select(`#chr` = chr, start, end, id = gene_name, gid = gene_id, strd = strand, starts_with("66K")) %>%
+    arrange(`#chr`, start)
+
+write_tsv(salmon_mapper_bed, "./pipeline_results/salmon/quants.bed")
 
 ###############################################################################
 # Salmon Pers 
@@ -83,22 +104,118 @@ salmon_pers %>%
     write_tsv("./plot_data/salmon_pers_hla_isoforms.tsv")
 
 
-# B2M normalization
-salmon_pers_b2m <- salmon_pers %>% 
-    filter(grepl("_t1", sampleid)) %>%
-    mutate(sampleid = sub("_t\\d$", "", sampleid),
-	   tx_id = ifelse(grepl("\\_[ABC]\\*", Name), 
-			  sub("^([^_]+).*$", "\\1", Name),
-			  Name)) %>%
+# check length for A*01 and A*11
+samples_a01 <- read_lines("./plot_data/a01_a11_individuals.txt") %>%
+    paste0("_t1")
+
+shorten_isos <- tx_annots %>%
+    filter(gene_name == "HLA-A") %>%
+    select(tx_id) %>%
+    slice(1:6) %>%
+    pull(tx_id)
+
+
+fix_lengths <- function(salmon_df) {
+
+    hla_df <- salmon_df %>%
+	filter(grepl("_A\\*", Name)) %>%
+	separate(Name, c("tx", "hla"), sep = "_", remove = FALSE) %>%
+	mutate(EffectiveLength = ifelse(tx %in% shorten_isos, EffectiveLength-120, EffectiveLength)) %>%
+	select(Name, Length, EffectiveLength, TPM, NumReads)
+
+    salmon_df %>%
+	filter(!grepl("_A\\*", Name)) %>%
+	bind_rows(hla_df)
+}
+
+
+
+salmon_01 <- file.path("./salmon-pers/quant", samples_a01, "quant.sf") %>%
+    setNames(samples_a01) %>%
+    map_df(~read_tsv(.) %>% fix_lengths(), .id = "sampleid") %>%
+    mutate(tx_id = ifelse(grepl("\\_[ABC]\\*", Name), 
+                          sub("^([^_]+).*$", "\\1", Name),
+                          Name)) %>%
     left_join(tx_annots, by = "tx_id") %>%
+    select(sampleid, Name, tx_id, gene_id, gene_name, EffectiveLength, NumReads, TPM)
+
+salmon_01_fix <- salmon_01 %>%
+    group_by(sampleid) %>%
+    mutate(TPM = (NumReads/EffectiveLength)/sum(NumReads/EffectiveLength) * 1e6L) %>%
+    ungroup()
+
+salmon_01_hla <- salmon_01_fix %>%
+    filter(grepl("_A\\*", Name)) %>%
+    select(sampleid, Name, gene_name, tpm = TPM) %>%
+    separate(Name, c("tx_id", "hla"), sep = "_") %>%
+    group_by(sampleid, gene_name, allele = hla) %>%
+    summarise(tpm = sum(tpm)) %>%
+    ungroup() %>%
+    mutate(sampleid = sub("_t1$", "", sampleid))
+
+write_tsv(salmon_01_hla, "./plot_data/a01a11_quants.tsv")
+
+
+
+
+
+
+## Counts
+library(edgeR)
+
+salmon_pers_genecounts <- salmon_pers %>% 
+    group_by(sampleid, gene_id, gene_name) %>%
+    summarise(count = sum(NumReads)) %>%
+    ungroup()
+
+count_matrix <- salmon_pers_genecounts %>%
+    filter(grepl("t1$", sampleid)) %>%
+    mutate(sampleid = sub("_t1$", "", sampleid)) %>%
+    pivot_wider(names_from = sampleid, values_from = count) %>% 
+    unite(gene, c("gene_id", "gene_name"), sep = "_") %>%
+    column_to_rownames("gene") %>%
+    data.matrix()
+
+y_counts <- DGEList(counts = count_matrix) 
+y_counts <- calcNormFactors(y_counts)
+y_counts <- cpm(y_counts, log = FALSE)
+
+y_counts_df <- as_tibble(y_counts, rownames = "gene") %>%
+    extract(gene, c("gene_id", "gene_name"), "([^_]+)_(.+)") %>%
+    pivot_longer(-(gene_id:gene_name), names_to = "sampleid", values_to = "cpm")
+
+write_tsv(y_counts_df, "./plot_data/cpm_edger.tsv")
+
+# Downsample
+ds_dataset <- salmon_pers %>%
+    filter(grepl("_t1$", sampleid)) %>%
+    mutate(sampleid = sub("_t1$", "", sampleid)) %>%
+    group_by(sampleid) %>%
+    mutate(ds_counts = NumReads/sum(NumReads) * 20e6,
+           tpm = (ds_counts/EffectiveLength)/sum(ds_counts/EffectiveLength),
+           tpm = tpm * 1e6L) %>%
+    ungroup() %>%
+    filter(gene_name %in% c("HLA-A", "HLA-B", "HLA-C")) %>%
+    group_by(sampleid, gene_id, gene_name) %>%
+    summarise(ds_counts = sum(ds_counts)) %>%
+    ungroup()
+    
+write_tsv(ds_dataset, "./plot_data/downsample_salmon_pers.tsv")
+
+
+
+# B2M normalization
+salmon_pers_b2m <- salmon_pers %>%
+    filter(grepl("_t1", sampleid)) %>%
     filter(gene_name %in% c("HLA-A", "HLA-B", "HLA-C", "B2M")) %>%
+    mutate(sampleid = sub("_t1$", "", sampleid)) %>%
     group_by(sampleid, gene_name) %>%
     summarise(counts = sum(NumReads)) %>%
     ungroup() %>%
     pivot_wider(names_from = gene_name, values_from = counts) %>%
     pivot_longer(contains("HLA"), names_to = "gene_name", values_to = "counts") %>%
     group_by(gene_name) %>%
-    mutate(norm_counts = scale(counts/B2M)[,1]) %>%
+    mutate(norm_counts = GenABEL::rntransform(counts/B2M)) %>%
     ungroup() %>%
     select(sampleid, gene_name, norm_counts)
 

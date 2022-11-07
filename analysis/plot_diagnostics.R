@@ -58,8 +58,6 @@ p2 <- ggplot(reads_df, aes(sampleid, readlen)) +
     labs(x = NULL, y = NULL,
          title = "Read length")
 
-
-
 tx_annots <- read_tsv("../indices/transcript_annotation_df.tsv") %>%
     select(tx_id, gene_id, gene_name, tx_type)
 

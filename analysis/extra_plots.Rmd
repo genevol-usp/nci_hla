@@ -1,0 +1,86 @@
+---
+title: "RNA-seq vs qPCR"
+subtitle: "Extra plots"
+output: pdf_document
+fontsize: 14pt
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+opts_chunk$set(echo = FALSE)
+```
+
+## Top 25 genes correlated with HLA
+
+```{r}
+include_graphics("./plots/topgenes_hla_correlation.png")
+```
+
+## GSEA analysis of all correlated genes
+
+```{r}
+include_graphics("./plots/gsea.png")
+```
+
+## PCA
+
+PCA reveals potential association with percentage of transcripts coming from SRP genes.
+
+```{r}
+include_graphics("./plots/pc_percentages.png")
+```
+
+However, these genes are very small, and this is a results of small counts (0-2% of total counts) giving rise to high Transcripts Per Million (TPM) values due to normalization by short lengths (not shown).
+
+### Gene contributions to PC1 and PC2
+
+```{r}
+include_graphics("./plots/pc_loadings.png")
+```
+
+### PCA correction does not improve correlation with qPCR
+
+
+```{r}
+include_graphics("./plots/pca_correction.png")
+```
+
+\pagebreak
+
+### Distribution of gene expression values
+
+After removing non-expressed genes, I transformed the Transcript Per Million values to make them standard-normal distributed.
+
+Vertical lines represent the expression of HLA-A, -B, and -C.
+
+```{r}
+include_graphics("./plots/tmp_fig1.png")
+```
+
+### Correlation between batches
+
+Considering only ~2,900 genes with std-normal expression > 1 in any of the two RNA-seq runs, I computed the within-sample correlation between the two RNA-seq experiments.
+
+```{r}
+include_graphics("./plots/tmp_fig2.png")
+```
+
+### Per-gene correlation across batches
+
+Considering the same ~2,900 genes with higher expression, this is the distribution of Spearman's correlation values per gene.
+
+```{r}
+include_graphics("./plots/tmp_fig3.png")
+```
+
+
+
+
+
+
+
+
+
+
+
+
