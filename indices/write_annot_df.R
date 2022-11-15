@@ -16,6 +16,7 @@ tx_annots <- annots %>%
 	      gene_id = str_extract(X9, "(?<=gene_id\\s\")[^\"]+"),
 	      gene_name = str_extract(X9, "(?<=gene_name\\s\")[^\"]+"),
 	      tx_id = str_extract(X9, "(?<=transcript_id\\s\")[^\"]+"),
+	      tx_type = str_extract(X9, "(?<=transcript_type\\s\")[^\"]+"),  
 	      start = X4, end = X5, strand = X7)
 
 hla_exon_annots <- annots %>%

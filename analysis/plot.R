@@ -7,6 +7,8 @@ library(tidytext)
 library(ggrepel)
 library(ggsci)
 library(pals)
+library(gridExtra)
+library(ggridges)
 
 # Main figs
 
@@ -96,7 +98,7 @@ cor_df <- quant_df %>%
   summarise(y = max(qPCR),
             r = round(cor(qPCR, rnaseq), 2),
             rho = round(cor(qPCR, rnaseq, method = "spearman"), 2),
-            p = cor.test(rnaseq, qPCR, method = "pearson", exact = FALSE)$p.value,
+            p = cor.test(rnaseq, qPCR, method = "spearman", alternative = "greater", exact = FALSE)$p.value,
             p = format(p, format = "e", digits = 2),
             rho_lab = paste("r ==", r, "*', '~rho == ", rho)) %>%
   ungroup()
@@ -153,8 +155,8 @@ fig2_c <- ggplot(surface_df, aes(mRNA, surface)) +
               size = 2.5) +
     facet_wrap(~method, scales = "free_x", strip.position = "bottom") +
     theme(strip.background = element_blank(),
-          strip.placement = "outside") +
-    theme(panel.grid.minor = element_blank(),
+          strip.placement = "outside",
+          panel.grid.minor = element_blank(),
           panel.background = element_rect(fill = "grey96"),
           text = element_text(size = 8, family = "Helvetica"),
           strip.text = element_text(vjust = 3),
@@ -239,32 +241,34 @@ plot_ranks <- function(gene, allele_data) {
     qpcr_a <- allele_data %>%
         filter(gene_name == gene, method == "qPCR") %>%
         ggplot(aes(x = reorder(lineage, rna, "median"), y = rna)) +
-        geom_boxplot(fill = NA, alpha = .25, size = .25, color = "grey50",
-                     outlier.color = NA) +
-        geom_quasirandom(method = "smiley", fill = "white", shape = 21,
-                         alpha = .75, size = 1.5, width = .25) +
+        geom_quasirandom(method = "smiley",
+                         alpha = .25, size = 1, width = .25) +
+        geom_boxplot(fill = NA, size = .25, width = .5,
+                     color = "black", outlier.color = NA) +
         scale_y_reverse(labels = function(x) format(x, nsmall = 1)) +
-        theme_minimal() +
         theme(axis.title = element_blank(),
               axis.text.x = element_blank(),
               axis.text.y = element_text(size = 8, family = "Helvetica"),
-              panel.grid = element_blank(),
-              plot.margin = margin(l = 25, t = -10, b = 10))
+              axis.ticks.x = element_blank(),
+              panel.background = element_rect(fill = "grey96"),
+              panel.grid.minor = element_blank(),
+              plot.margin = margin(l = 25, r = 7.5, t = -10, b = 10))
     
     rnaseq_a <- allele_data %>%
         filter(gene_name == gene, method == "RNA-seq") %>%
         ggplot(aes(x = reorder(lineage, rna, "median"), y = rna/1000L)) +
-        geom_boxplot(fill = NA, alpha = .25, size = .25, color = "grey50",
-                     outlier.color = NA) +
-        geom_quasirandom(method = "smiley", fill = "black", shape = 21,
-                         alpha = .75, size = 1.5, width = .25) +
+        geom_quasirandom(method = "smiley",
+                         alpha = .25, size = 1, width = .25) +
+        geom_boxplot(fill = NA, size = .25, width = .5,
+                     color = "black", outlier.color = NA) +
         scale_y_continuous(labels = function(x) format(x, nsmall = 1)) +
-        theme_minimal() +
         theme(axis.title = element_blank(),
               axis.text.x = element_blank(),
               axis.text.y = element_text(size = 8, family = "Helvetica"),
-              panel.grid = element_blank(),
-              plot.margin = margin(l = 25, b = -10, t = 10))
+              axis.ticks.x = element_blank(),
+              panel.background = element_rect(fill = "grey96"),
+              panel.grid.minor = element_blank(),
+              plot.margin = margin(l = 25, r = 7.5, b = -10, t = 10))
     
     plot_grid(rnaseq_a, rank_a, qpcr_a, ncol = 1, rel_heights = c(1, 1.25, 1))
 }
@@ -278,87 +282,8 @@ fig3 <- plot_grid(plot_ranks("HLA-A", allele_df),
                   hjust = 0, label_x = .5) +
     theme(plot.background = element_rect(fill = "white", color = "white"))
 
-ggsave("./plots/fig3.jpg", fig3, height = 6.25, width = 5)
+ggsave("./plots/fig3.jpg", fig3, height = 5.75, width = 5)
 
-ggsave("./plots/fig3_adj.jpg", fig3, height = 6.25, width = 5)
-
-
-
-# Fig 4
-# 4A
-ids <- read_lines("./sample_ids.txt")
-
-tx_annots <- read_tsv("../indices/transcript_annotation_df.tsv") %>%
-    select(tx_id, gene_id, gene_name, tx_type)
-
-salmon_tx <- "./salmon/quant/%s/quant.sf" %>%
-    sprintf(ids) %>%
-    setNames(ids) %>%
-    map_df(. %>% read_tsv %>% select(tx_id = Name, len = EffectiveLength, counts = NumReads, tpm = TPM), 
-           .id = "sampleid") %>%
-    mutate(timepoint = ifelse(grepl("t1$", sampleid), "Timepoint 1", "Timepoint 2")) %>%
-    left_join(tx_annots) %>%
-    select(sampleid, timepoint, tx_id, tx_type, len, gene_id, gene_name, counts, tpm)
-
-samples_timeps <- tibble(x = read_lines("./sample_ids.txt")) %>%
-    separate(x, c("sampleid", "timepoint"), sep = "_", remove = FALSE) %>%
-    group_by(sampleid) %>%
-    filter(all(c("t1", "t2") %in% timepoint)) %>%
-    ungroup() %>%
-    select(sampleid = x, x = sampleid, timepoint)
-
-quant_batches_tpm <- salmon_tx %>%
-    filter(sampleid %in% samples_timeps$sampleid) %>%
-    filter(tx_type == "protein_coding") %>%
-    group_by(sampleid, timepoint, gene_id, gene_name) %>%
-    summarise(tpm = sum(tpm)) %>%
-    ungroup() %>%
-    mutate(timepoint = sub("imepoint ", "", timepoint),
-           sampleid = sub("_t[12]$", "", sampleid)) %>%
-    pivot_wider(names_from = timepoint, values_from = tpm)
-
-expressed_genes <- quant_batches_tpm %>%
-    group_by(gene_id, gene_name) %>%
-    filter(mean(T1 > 25) > .5) %>%
-    ungroup()
-
-cor_tps_df <- expressed_genes %>%
-    group_by(sampleid) %>%
-    summarise(rho = round(cor(T2, T1, method = "spearman"), 2),
-              rho_lab = paste("~rho == ", rho)) %>%
-    ungroup()
-
-fig4_a <- ggplot(expressed_genes, aes(log10(T1+1), log10(T2+1))) +
-    geom_abline(linetype = 2) +
-    geom_point(size = .25, alpha = .25) +
-    geom_text(data = cor_tps_df, 
-              aes(x = 0, y = 4, label = rho_lab),
-              hjust = "inward", vjust = "inward", 
-              parse = TRUE,
-              size = 3) +
-    scale_x_continuous(breaks = scales::pretty_breaks(3)) +
-    scale_y_continuous(breaks = scales::pretty_breaks(3)) +
-    facet_wrap(~sampleid, nrow = 2) +
-    theme(text = element_text(size = 10, family = "Helvetica"),
-          panel.background = element_rect(fill = "grey96"),
-          panel.grid.minor = element_blank(),
-          plot.background = element_rect(fill = "white", color = "white"),
-          plot.title = element_text(size = 9),
-          plot.margin = margin(.5, .5, .5, .5, unit = "cm")) +
-    labs(x = "Original sample", y = "Fresh sample") +
-    labs(x = "Original sample", y = "Fresh sample",
-         title = "High correlation between two RNA-seq experiments for 11 individuals.")
-
-
-alleles_df <- read_rds("./plot_data/salmon_pers_allele.rds") %>%
-    filter(grepl("_t1$", sampleid)) %>% 
-    mutate(sampleid = sub("_t1$", "", sampleid),
-           lineage = sub("^([^:]+).*$", "\\1", allele)) %>%
-    select(sampleid, gene_name, lineage) %>%
-    group_by(sampleid, gene_name) %>%
-    mutate(a = paste0("a", 1:n())) %>%
-    ungroup() %>%
-    pivot_wider(names_from = a, values_from = lineage)
 
 # dose_df <- quant_df %>%
 #     filter(method == first(method)) %>%
@@ -392,7 +317,23 @@ alleles_df <- read_rds("./plot_data/salmon_pers_allele.rds") %>%
 #          title = "RNA-seq vs. qPCR relationship broken by specific alleles.") +
 #     guides(fill = guide_legend(override.aes = list(size = 2)))
 
-# 4B
+#Fig 4
+# 
+# 
+
+# Fig 4
+alleles_df <- read_rds("./plot_data/salmon_pers_allele.rds") %>%
+    filter(grepl("_t1$", sampleid)) %>%
+    mutate(sampleid = sub("_t1$", "", sampleid),
+           lineage = sub("^([^:]+).*$", "\\1", allele)) %>%
+    select(sampleid, gene_name, lineage) %>%
+    group_by(sampleid, gene_name) %>%
+    mutate(a = paste0("a", 1:n())) %>%
+    ungroup() %>%
+    pivot_wider(names_from = a, values_from = lineage)
+
+
+# 4A
 alleles_quant_df <- quant_df %>%
     filter(method == first(method), gene_name %in% c("HLA-A", "HLA-C")) %>%
     select(-surface, -method, -lab) %>%
@@ -406,7 +347,7 @@ alleles_quant_df <- quant_df %>%
                             gene_name == "C*07" ~ `C*07`)) %>%
     select(sampleid, allele = gene_name, qPCR, rnaseq, dose)
 
-fig4_b <- ggplot(alleles_quant_df, aes(rnaseq, qPCR)) +
+fig4_a <- ggplot(alleles_quant_df, aes(rnaseq, qPCR)) +
     geom_point(aes(fill = factor(dose)), 
                shape = 21, stroke = .2, size = 1.5, color = "black") +
     scale_fill_manual(values = c("0" = "white", "1" = "grey50", "2" = "black")) +
@@ -423,56 +364,35 @@ fig4_b <- ggplot(alleles_quant_df, aes(rnaseq, qPCR)) +
          title = "Correlation RNA-seq vs qPCR highlighting\nthe number of copies of A*03 and C*07")
     
 
-#4C
+#4B
 # new a01 a11 expression
-newadf <-
-    read_tsv("./plot_data/a01a11_quants.tsv") %>%
-    group_by(sampleid, gene_name) %>%
-    summarise(rna = sum(tpm)) %>%
-    ungroup()
-
-newa_std <- anti_join(salmon_pers_hla, distinct(newadf, sampleid, gene_name)) %>%
-    bind_rows(newadf) %>%
-    filter(gene_name == "HLA-A") %>%
-    group_by(gene_name) %>%
-    mutate(rna = GenABEL::rntransform(rna)) %>%
-    ungroup()
-
-quant_newa_df <- 
-    left_join(newa_std, nci_expression, by = c("sampleid", "gene_name")) %>%
-    select(sampleid, gene_name, qPCR = m_rna, rnaseq = rna)
-
-cor_newa_df <- quant_newa_df %>%
-    group_by(gene_name) %>%
-    summarise(y = max(qPCR),
-              r = round(cor(qPCR, rnaseq), 2),
-              rho = round(cor(qPCR, rnaseq, method = "spearman"), 2),
-              p = cor.test(rnaseq, qPCR, method = "pearson", exact = FALSE)$p.value,
-              p = format(p, format = "e", digits = 2),
-              rho_lab = paste("r ==", r, "*', '~rho == ", rho)) %>%
-    ungroup()
-
-fig4_c <- quant_newa_df %>%
-    ggplot(aes(rnaseq, qPCR)) +
-    geom_smooth(method = "lm", se = FALSE, color = "black", size = 1.5) +
-    geom_smooth(method = "lm", se = FALSE, color = "white", size = 1) +
-    geom_point(size = 1) +
-    geom_text(data = cor_newa_df,
-              aes(x = -2.5, y + (y *.1), label = rho_lab),
-              hjust = "inward", vjust = "inward", 
-              parse = TRUE,
-              size = 3) +
-    facet_wrap(~gene_name, nrow = 1, scales = "free") +
-    theme(panel.grid.minor = element_blank(),
-          text = element_text(size = 10, family = "Helvetica"),
-          plot.margin = margin(.25, .5, 0, 0, unit = "cm"),
-          plot.title = element_text(size = 9),
-          panel.background = element_rect(fill = "grey96")) +
-    labs(x = "RNA-seq", title = "Correlation after ajusting for\nisoform length for A*01 and A*11")
 
 
-#4D
+# fig4_b <- quant_newa_df %>%
+#     ggplot(aes(rnaseq, qPCR)) +
+#     geom_smooth(method = "lm", se = FALSE, color = "black", size = 1.5) +
+#     geom_smooth(method = "lm", se = FALSE, color = "white", size = 1) +
+#     geom_point(size = 1) +
+#     geom_text(data = cor_newa_df,
+#               aes(x = -2.5, y + (y *.1), label = rho_lab),
+#               hjust = "inward", vjust = "inward", 
+#               parse = TRUE,
+#               size = 3) +
+#     facet_wrap(~gene_name, nrow = 1, scales = "free") +
+#     theme(panel.grid.minor = element_blank(),
+#           text = element_text(size = 10, family = "Helvetica"),
+#           plot.margin = margin(.25, .5, 0, 0, unit = "cm"),
+#           plot.title = element_text(size = 9),
+#           panel.background = element_rect(fill = "grey96")) +
+#     labs(x = "RNA-seq", title = "Correlation after ajusting for\nisoform length for A*01 and A*11")
+
+
+# 4C
+ids <- read_lines("./sample_ids.txt")
 samples_t1 <- grep("_t1$", ids, value = TRUE)
+
+tx_annots <- read_tsv("../indices/transcript_annotation_df.tsv") %>%
+    select(tx_id, gene_id, gene_name, tx_type)
 
 salmon_pers_tx <- "./salmon-pers/quant/%s/quant.sf" %>%
     sprintf(samples_t1) %>%
@@ -480,9 +400,9 @@ salmon_pers_tx <- "./salmon-pers/quant/%s/quant.sf" %>%
     map_df(. %>% read_tsv %>% select(tx_id = Name, counts = NumReads, tpm = TPM), 
            .id = "sampleid") %>%
     mutate(tx_id = sub("^([^_]+).*$", "\\1", tx_id),
-	   sampleid = sub("_t1$", "", sampleid)) %>%
+           sampleid = sub("_t1$", "", sampleid)) %>%
     left_join(tx_annots) %>%
-    select(sampleid, tx_id, tx_type, gene_id, gene_name, tpm)
+    select(sampleid, tx_id, tx_type, gene_id, gene_name, tpm, counts)
 
 b2m_all <- salmon_pers_tx %>%
     filter(gene_name %in% c("HLA-A", "HLA-B", "HLA-C", "B2M")) %>%
@@ -501,7 +421,7 @@ b2m_all_cor <- b2m_all %>%
               rho_lab = paste("~rho == ", rho)) %>%
     ungroup()
 
-fig4_d <- ggplot(b2m_all, aes(std, B2M)) +
+fig4_c <- ggplot(b2m_all, aes(std, B2M)) +
     geom_smooth(method = "lm", se = FALSE, color = "black", size = 1.5) +
     geom_smooth(method = "lm", se = FALSE, color = "white", size = 1) +
     geom_point() +
@@ -521,18 +441,102 @@ fig4_d <- ggplot(b2m_all, aes(std, B2M)) +
 
 
 fig4 <- 
-    plot_grid(fig4_a,
-              plot_grid(fig4_b, fig4_c, rel_widths = c(1, .6),
-                        labels = c("B)", "C)"), 
+    plot_grid(plot_grid(fig4_a, fig4_b, rel_widths = c(1, .6),
+                        labels = c("A)", "B)"), 
                         label_size = 10, label_fontfamily = "Helvetica"),
-              fig4_d, 
-              ncol = 1, 
-              labels = c("A)", NA, "D)"),
-              label_size = 10, label_fontfamily = "Helvetica",
-              rel_heights = c(1, .7, .7))
+              fig4_c, 
+              ncol = 1, rel_heights = c(.8, 1),
+              labels = c("", "C)"),
+              label_size = 10, label_fontfamily = "Helvetica")
+
+ggsave("./plots/fig4.jpg", fig4, width = 6, height = 4)
 
 
-ggsave("./plots/fig4.jpg", fig4, width = 6, height = 7)
+
+
+genos <- read_tsv("./genos_final.tsv") %>%
+    filter(gene_name == "HLA-A") %>%
+    select(sampleid, i, allele) %>%
+    mutate(lineage = sub("^(C\\*\\d+).*$", "\\1", allele))
+
+nci_df <- "/raid/genevol/nci_rnaseq/phase1/HLA-A, -B, -C expression levels for Pat.xlsx" %>%
+    readxl::read_excel() %>%
+    janitor::clean_names() %>%
+    select(sampleid = 3, rna = hla_a_m_rna) %>%
+    mutate(rna = as.numeric(rna)) %>%
+    filter(!is.na(rna)) %>%
+    inner_join(genos)
+
+nci_zyg <- nci_df %>%
+    mutate(allele = sub("^(A\\*\\d+:\\d+).*$", "\\1", allele)) %>%
+    group_by(sampleid) %>%
+    summarise(rna = unique(rna),
+              genot = paste(sort(allele), collapse = "/")) %>%
+    ungroup()
+
+ggplot(nci_zyg, aes(y = reorder(genot, rna, fun = "median"),
+                    x = rna)) +
+    geom_point() +
+    labs(y = NULL)
+
+
+
+
+
+
+
+# Fig S6 B2M Fold change
+hla_b2m_fc <- salmon_pers_tx %>%
+    filter(gene_name %in% c("HLA-A", "HLA-B", "HLA-C", "B2M")) %>%
+    group_by(sampleid, gene_name) %>%
+    summarise(counts = sum(counts)) %>%
+    ungroup() %>%
+    pivot_wider(names_from = gene_name, values_from = counts) %>%
+    pivot_longer(starts_with("HLA"), names_to = "gene_name", values_to = "hla") %>%
+    mutate(fc = hla/B2M * 100) %>%
+    left_join(select(nci_expression, sampleid, gene_name, qPCR = m_rna)) %>%
+    filter(fc < 1000)
+
+cor_fc_df <- hla_b2m_fc %>%
+    group_by(gene_name) %>%
+    summarise(x = min(fc),
+              y = max(qPCR),
+              r = round(cor(qPCR, fc), 2),
+              rho = round(cor(qPCR, fc, method = "spearman"), 2),
+              p = cor.test(fc, qPCR, method = "pearson", exact = FALSE)$p.value,
+              p = format(p, format = "e", digits = 2),
+              rho_lab = paste("r ==", r, "*', '~rho == ", rho)) %>%
+    ungroup()
+
+b2m_fc_plot <- hla_b2m_fc %>%
+    ggplot(aes(fc, qPCR)) +
+    geom_smooth(method = "lm", se = FALSE, color = "black", size = 1.5) +
+    geom_smooth(method = "lm", se = FALSE, color = "white", size = 1) +
+    geom_point(size = 1) +
+    geom_text(data = cor_fc_df, 
+              aes(x = x, y = y, label = rho_lab),
+              hjust = "inward", vjust = "inward", 
+              parse = TRUE,
+              size = 2.5) +
+    facet_wrap(~gene_name, nrow = 1, scales = "free") +
+    theme(panel.grid.minor = element_blank(),
+          text = element_text(size = 8, family = "Helvetica"),
+          plot.margin = margin(.5, .5, 0, .5, unit = "cm"),
+          panel.background = element_rect(fill = "grey96")) +
+    labs(x = "HLA/B2M x 100")
+
+ggsave("./plots/sfig_b2mfc.jpg", b2m_fc_plot, width = 6, height = 2)
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -941,12 +945,13 @@ fig_s3 <- quant_bias_df %>%
 ggsave("./plots/fig_s3.jpg", fig_s3, width = 6, height = 2.5)
 
 
-# Fig S4
+# Fig S5
 annots <- read_tsv("../indices/transcript_annotation_df.tsv")
 
 hla_annot <- read_rds("./plot_data/transcripts_annot.rds") %>%
     left_join(distinct(annots, transcript_id = tx_id, tx_type)) %>%
-    distinct(gene_name, transcript_id, tx_type, feature, start, end)
+    distinct(gene_name, transcript_id, tx_type, feature, start, end) %>%
+    filter(gene_name != "B2M")
 
 tmp <- hla_annot %>%
     filter(tx_type == "protein_coding") %>%
@@ -959,7 +964,6 @@ tmp <- hla_annot %>%
     ungroup() %>%
     distinct(gene_name, pos, is_exon) %>%
     arrange(gene_name, pos)
-
 
 sampleids_t1 <- read_lines("./sample_ids_t1.txt")
 
@@ -990,11 +994,9 @@ cov_df %>%
     summarise(cov = mean(cov)) %>%
     ungroup() %>%
     pivot_wider(names_from = a01_a11, values_from = cov) %>%
-    select(pos, a0 = `0`, a2 = `2`) %>%
     tail(500) %>% print(n = Inf)
 
-
-fig_s4_a <- cov_df %>%
+fig_s5 <- cov_df %>%
     filter(pos < 31e6) %>%
     left_join(genos) %>%
     left_join(tmp, by = "pos") %>%
@@ -1011,39 +1013,536 @@ fig_s4_a <- cov_df %>%
     labs(x = "Position in chr6 (Mb)", y = "Coverage", 
          color = "Exon:")
 
+ggsave("./plots/fig_s5.jpg", fig_s5, width = 6)
+
+
+crit <- 29945764
+
+
 # test new a01 a11 expression
+cov_wt <- cov_df %>%
+    mutate(i = case_when(pos >= crit - 120 & pos < crit ~ "prox",
+                         pos >= crit & pos < crit + 120 ~ "dist",
+                         TRUE ~ NA_character_)) %>%
+    filter(!is.na(i)) %>%
+    group_by(sampleid, i) %>%
+    summarise(d = median(cov)) %>%
+    ungroup()
 
-samples01 <- read_lines("./plot_data/a01_a11_individuals.txt")
+salmon_pers_all <- "./salmon-pers/quant/%s/quant.sf" %>%
+    sprintf(samples_t1) %>%
+    setNames(sub("_t1$", "", samples_t1)) %>%
+    map_df(~read_tsv(.) %>%
+               mutate(Name = sub("^([^_]+).*$", "\\1", Name)), 
+           .id = "sampleid") %>%
+    left_join(tx_annots, c("Name" = "tx_id")) %>%
+    select(sampleid, gene_id, gene_name, tx_id = Name, len = EffectiveLength, count = NumReads, tpm = TPM)
 
-newa1 <- read_tsv("./plot_data/a01a11_quants.tsv") %>%
-    group_by(sampleid, gene_name) %>%
-    mutate(n = n(),
-           tpm = ifelse(n == 1, tpm/2L, tpm),
-           i = ifelse(n == 1, "1_1", "1")) %>%
-    ungroup()  %>%
+hlaaiso <- read_lines("./plot_data/hla_a_fullisoforms.txt")
+
+salmon_adj_len <- salmon_pers_all %>%
+    filter(gene_name == "HLA-A", tx_id %in% hlaaiso) %>%
+    filter(count > 0) %>%
+    arrange(sampleid, tx_id) %>%
+    group_by(sampleid, gene_id, gene_name, tx_id) %>%
+    summarise(len = weighted.mean(len, tpm),
+              count = sum(count),
+              tpm = sum(tpm)) %>%
+    ungroup() %>%
+    mutate(i = "prox_dist") %>%
     separate_rows(i, sep = "_") %>%
-    select(-n, -i) %>%
-    mutate(lineage = sub("^([ABC]\\*\\d+).*$", "\\1", allele)) %>%
-    mutate(method = "RNA-seq") %>%
-    select(method, sampleid, gene_name, lineage, rna = tpm)
+    left_join(cov_wt) %>%
+    mutate(len = ifelse(i == "prox", len - 120, len)) %>%
+    group_by(sampleid, gene_id, gene_name, tx_id) %>%
+    summarise(len = weighted.mean(len, d),
+              count = unique(count),
+              tpm = unique(tpm)) %>%
+    ungroup()
 
-allele_newa_df <- anti_join(allele_df, 
-                       distinct(newa1, method, sampleid, gene_name), 
-                       by = c("method", "sampleid", "gene_name")) %>%
-    bind_rows(newa1) %>%
-    arrange(method, sampleid, gene_name, lineage)
+salmon_pers_adj_iso <- salmon_pers_all %>%
+    filter(!(gene_name == "HLA-A" & tx_id %in% hlaaiso)) %>%
+    bind_rows(salmon_adj_len) %>%
+    filter(count > 0) %>%
+    group_by(sampleid) %>%
+    mutate(adjtpm = (count/len)/sum(count/len) * 1e6L) %>%
+    ungroup() 
 
-fig_s4_b <- plot_ranks("HLA-A", allele_newa_df) +
-    theme(plot.background = element_rect(fill = "white", color = "white"),
-          plot.margin = margin(.5, 1, .5, 1, unit = "cm"))
+salmon_pers_adj <- salmon_pers_adj_iso %>%
+    group_by(sampleid, gene_id, gene_name) %>%
+    summarise_at(vars(count, tpm, adjtpm), sum) %>%
+    ungroup()
+    
+hlaa_adj <- salmon_pers_adj %>%
+    filter(gene_name == "HLA-A") %>%
+    group_by(gene_name) %>%
+    mutate(std = GenABEL::rntransform(adjtpm)) %>%
+    ungroup() %>%
+    left_join(nci_expression) %>%
+    select(sampleid, gene_name, rnaseq = std, qPCR = m_rna)
 
-fig_s4 <- plot_grid(fig_s4_a, fig_s4_b, 
-                    ncol = 1, rel_heights = c(1, .7), 
-                    labels = c("A)", "B)"))
+cor_hlaa_adj <- hlaa_adj %>%
+    group_by(gene_name) %>%
+    summarise(x = min(rnaseq), 
+              y = max(qPCR),
+              r = round(cor(qPCR, rnaseq), 2),
+              rho = round(cor(qPCR, rnaseq, method = "spearman"), 2),
+              p = cor.test(rnaseq, qPCR, method = "spearman", alternative = "greater", exact = FALSE)$p.value,
+              p = format(p, format = "e", digits = 2),
+              rho_lab = paste("r ==", r, "*', '~rho == ", rho)) %>%
+    ungroup()
+
+genos_df <- genos %>%
+    mutate(n = sub("^([0-2])\\s.*$", "\\1", a01_a11)) %>%
+    select(sampleid, n)
 
 
-ggsave("./plots/fig_s4.jpg", fig_s4, width = 6, height = 6)
+fig4_b <- hlaa_adj %>%
+    left_join(genos_df) %>%
+    ggplot(aes(rnaseq, qPCR)) +
+    geom_smooth(method = "lm", se = FALSE, color = "black", size = 1.5) +
+    geom_smooth(method = "lm", se = FALSE, color = "white", size = 1) +
+    geom_point(aes(fill = n), size = 1.5, shape = 21, stroke = .2) +
+    scale_fill_manual(values = c("0" = "white", "1" = "grey50", "2" = "black")) +
+    geom_text(data = cor_hlaa_adj,
+              aes(x = x, y + (y *.1), label = rho_lab),
+              hjust = "inward", vjust = "inward", 
+              parse = TRUE,
+              size = 2.5) +
+    facet_wrap(~gene_name, nrow = 1, scales = "free") +
+    theme(panel.grid.minor = element_blank(),
+          text = element_text(size = 10, family = "Helvetica"),
+          plot.margin = margin(.25, .5, 0, 0, unit = "cm"),
+          plot.title = element_text(size = 9),
+          panel.background = element_rect(fill = "grey96"),
+          legend.key.width = unit(0.25, "cm"),
+          legend.margin = margin(0,0,0,0),
+          legend.box.margin = margin(-5,-5,-5,-5),) +
+    labs(x = "RNA-seq", 
+         title = "Correlation after ajusting for\n 3'-UTR length",
+         fill = "allele\ndose")
 
+
+
+# newa1 <- read_tsv("./plot_data/a01a11_quants.tsv") %>%
+#     group_by(sampleid, gene_name) %>%
+#     mutate(n = n(),
+#            tpm = ifelse(n == 1, tpm/2L, tpm),
+#            i = ifelse(n == 1, "1_1", "1")) %>%
+#     ungroup()  %>%
+#     separate_rows(i, sep = "_") %>%
+#     select(-n, -i) %>%
+#     mutate(lineage = sub("^([ABC]\\*\\d+).*$", "\\1", allele)) %>%
+#     mutate(method = "RNA-seq") %>%
+#     select(method, sampleid, gene_name, lineage, rna = tpm)
+# 
+# allele_newa_df <- anti_join(allele_df,
+#                        distinct(newa1, method, sampleid, gene_name),
+#                        by = c("method", "sampleid", "gene_name")) %>%
+#     bind_rows(newa1) %>%
+#     arrange(method, sampleid, gene_name, lineage)
+# 
+# fig_s4_b <- plot_ranks("HLA-A", allele_newa_df) +
+#     theme(plot.background = element_rect(fill = "white", color = "white"),
+#           plot.margin = margin(.5, 1, .5, 1, unit = "cm"))
+# 
+# fig_s4 <- plot_grid(fig_s4_a, fig_s4_b,
+#                     ncol = 1, rel_heights = c(1, .7),
+#                     labels = c("A)", "B)"))
+# 
+# 
+# ggsave("./plots/fig_s4.jpg", fig_s4, width = 6, height = 6)
+
+
+
+# Fig S timepoints
+salmon_tx <- "./salmon/quant/%s/quant.sf" %>%
+    sprintf(ids) %>%
+    setNames(ids) %>%
+    map_df(. %>% read_tsv %>% select(tx_id = Name, len = EffectiveLength, counts = NumReads, tpm = TPM), 
+           .id = "sampleid") %>%
+    mutate(timepoint = ifelse(grepl("t1$", sampleid), "Timepoint 1", "Timepoint 2")) %>%
+    left_join(tx_annots) %>%
+    select(sampleid, timepoint, tx_id, tx_type, len, gene_id, gene_name, counts, tpm)
+
+samples_timeps <- tibble(x = read_lines("./sample_ids.txt")) %>%
+    separate(x, c("sampleid", "timepoint"), sep = "_", remove = FALSE) %>%
+    group_by(sampleid) %>%
+    filter(all(c("t1", "t2") %in% timepoint)) %>%
+    ungroup() %>%
+    select(sampleid = x, x = sampleid, timepoint)
+
+quant_batches_tpm <- salmon_tx %>%
+    filter(sampleid %in% samples_timeps$sampleid) %>%
+    filter(tx_type == "protein_coding") %>%
+    group_by(sampleid, timepoint, gene_id, gene_name) %>%
+    summarise(tpm = sum(tpm)) %>%
+    ungroup() %>%
+    mutate(timepoint = sub("imepoint ", "", timepoint),
+           sampleid = sub("_t[12]$", "", sampleid)) %>%
+    pivot_wider(names_from = timepoint, values_from = tpm)
+
+# A
+tps_df <- inner_join(salmon_tx, select(samples_timeps, sampleid, x), by = "sampleid") %>%
+    select(sampleid = x, timepoint, tx_type, gene_id, gene_name, tpm) %>%
+    group_by(sampleid, timepoint, gene_id, gene_name) %>%
+    summarise(tpm = sum(tpm)) %>%
+    group_by(sampleid, timepoint) %>%
+    mutate(p = tpm/sum(tpm)) %>%
+    ungroup()
+
+top_10_genes <- tps_df %>%
+    group_by(gene_id, gene_name) %>%
+    summarise(avg_p = mean(p)) %>%
+    ungroup() %>%
+    arrange(desc(avg_p)) %>%
+    slice(1:10)
+
+tps_final <- tps_df %>%
+    mutate(lab = ifelse(gene_id %in% top_10_genes$gene_id, gene_name, "Other"),
+           lab = factor(lab, levels = rev(c(top_10_genes$gene_name, "Other"))),
+           timepoint = sub("Timepoint ", "", timepoint)) %>%
+    group_by(sampleid, timepoint, lab) %>%
+    summarise(p = sum(p)) %>%
+    ungroup()
+
+cols_sfig_tp <- c("grey90", "black", "lightpink", "green4", "red3", "salmon", 
+                  "lightslateblue", "tomato4", "steelblue1", "steelblue4", "midnightblue")
+
+sfig_tp_a <- ggplot(tps_final, aes(timepoint, p, fill = lab)) +
+    geom_col(size = 0) +
+    scale_fill_manual(values = cols_sfig_tp) +
+    scale_y_continuous(labels = scales::percent) +
+    facet_wrap(~sampleid, nrow = 1) +
+    theme_minimal() +
+    theme(text = element_text(size = 8, family = "Helvetica"),
+          panel.background = element_rect(color = "white", fill = "white"),
+          panel.grid = element_blank(),
+          plot.margin = margin(.5, .5, 0, .5, unit = "cm"),
+          strip.text = element_text(size = 8),
+          axis.text = element_text(size = 7),
+          legend.key.height = unit(.25, "cm"),
+          legend.key.width = unit(.25, "cm"),
+          legend.margin = margin(0, 0, 0, 0),
+          legend.box.margin = margin(0, 0, 0, -5),
+          panel.spacing = unit(0, "lines")) +
+    labs(fill = "Gene", x = NULL, y = NULL, 
+         title = "Proportion of total transcripts contributed by specific genes.")
+
+# B
+tps_biotype <- inner_join(salmon_tx, select(samples_timeps, sampleid, x), by = "sampleid") %>%
+    select(sampleid = x, timepoint, tx_type, gene_id, gene_name, tpm) %>%
+    group_by(sampleid, timepoint, tx_type) %>%
+    summarise(tpm = sum(tpm)) %>%
+    group_by(sampleid, timepoint) %>%
+    mutate(p = tpm/sum(tpm)) %>%
+    ungroup()
+
+top_5_types <- tps_biotype %>%
+    group_by(timepoint, tx_type) %>%
+    summarise(avg_p = mean(p)) %>%
+    ungroup() %>%
+    arrange(desc(avg_p)) %>%
+    group_by(timepoint) %>%
+    top_n(5, avg_p) %>%
+    ungroup() %>%
+    arrange(timepoint, desc(avg_p)) %>%
+    distinct(tx_type) %>%
+    pull(tx_type)
+
+tps_biotype_final <- tps_biotype %>%
+    mutate(lab = ifelse(tx_type %in% top_5_types, tx_type, "Other"),
+           lab = factor(lab, levels = rev(c(top_5_types, "Other"))),
+           timepoint = sub("Timepoint ", "", timepoint)) %>%
+    group_by(sampleid, timepoint, lab) %>%
+    summarise(p = sum(p)) %>%
+    ungroup()
+
+sfig_tp_b <- ggplot(tps_biotype_final, aes(timepoint, p, fill = lab)) +
+    geom_col(size = 0) +
+    scale_fill_manual(values = c("grey90", pal_npg()(6)[c(-1, -6)], "black")) +
+    scale_y_continuous(labels = scales::percent) +
+    facet_wrap(~sampleid, nrow = 1) +
+    theme_minimal() +
+    theme(text = element_text(size = 8, family = "Helvetica"),
+          panel.background = element_rect(color = "white", fill = "white"),
+          plot.margin = margin(.5, .5, 0, .5, unit = "cm"),
+          panel.grid = element_blank(),
+          strip.text = element_text(size = 8),
+          axis.text = element_text(size = 7),
+          legend.key.height = unit(.3, "cm"),
+          legend.key.width = unit(.25, "cm"),
+          legend.margin = margin(0, 0, 0, 0),
+          legend.box.margin = margin(0, 0, 0, -5),
+          panel.spacing = unit(0, "lines")) +
+    labs(x = NULL, y = NULL, fill = "Biotype",
+         title = "Proportion of total transcripts in each Gencode biotype.")
+
+# C
+expressed_genes <- quant_batches_tpm %>%
+    group_by(gene_id, gene_name) %>%
+    filter(mean(T1 > 25) > .5) %>%
+    ungroup()
+
+cor_tps_df <- expressed_genes %>%
+    group_by(sampleid) %>%
+    summarise(rho = round(cor(T2, T1, method = "spearman"), 2),
+              rho_lab = paste("~rho == ", rho)) %>%
+    ungroup()
+
+sfig_tp_c <- ggplot(expressed_genes, aes(log10(T1+1), log10(T2+1))) +
+    geom_abline(linetype = 2) +
+    geom_point(size = .25, alpha = .25) +
+    geom_text(data = cor_tps_df, 
+              aes(x = 0, y = 4, label = rho_lab),
+              hjust = "inward", vjust = "inward", 
+              parse = TRUE,
+              size = 3) +
+    scale_x_continuous(breaks = scales::pretty_breaks(3)) +
+    scale_y_continuous(breaks = scales::pretty_breaks(3)) +
+    facet_wrap(~sampleid, nrow = 2) +
+    theme(text = element_text(size = 8, family = "Helvetica"),
+          strip.text = element_text(size = 8),
+          axis.text = element_text(size = 7),
+          axis.title = element_text(size = 8),
+          panel.background = element_rect(fill = "grey96"),
+          panel.grid.minor = element_blank(),
+          plot.background = element_rect(fill = "white", color = "white"),
+          plot.margin = margin(.5, .5, .25, .5, unit = "cm")) +
+    labs(x = "Original sample", y = "Fresh sample") +
+    labs(x = "Original sample", y = "Fresh sample",
+         title = "Correlation between timepoints for highly expressed genes")
+
+# D
+quant_timeps <- file.path("./salmon-pers/quant-bias", samples_timeps$sampleid, "quant.sf") %>%
+    setNames(samples_timeps$sampleid) %>%
+    map_df(read_tsv, .id = "sampleid")
+
+quant_timeps_hla <- quant_timeps %>%
+    filter(grepl("_[ABC]\\*", Name)) %>%
+    separate(sampleid, c("sampleid", "tp"), sep = "_") %>%
+    separate(Name, c("tx_id", "hla"), sep = "_") %>%
+    mutate(gene_name = sub("^([ABC])\\*.*$", "HLA-\\1", hla)) %>%
+    select(sampleid, tp, gene_name, tx_id, hla, tpm = TPM, count = NumReads) %>%
+    group_by(sampleid, tp, gene_name, hla) %>%
+    summarise_at(vars(tpm, count), sum) %>%
+    ungroup()
+
+quant_pers_hla_tpm <- quant_timeps_hla %>%
+    group_by(sampleid, tp, gene_name) %>%
+    summarise(tpm = sum(tpm)) %>%
+    ungroup() %>%
+    pivot_wider(names_from = tp, values_from = tpm)
+
+hla_limits <- quant_pers_hla_tpm %>%
+    pivot_longer(t1:t2, names_to = "dummy") %>%
+    group_by(gene_name) %>%
+    summarise(r = range(value)) %>%
+    ungroup() %>%
+    mutate(r2 = r) %>%
+    select(gene_name, x = r, y = r2)
+
+tps_corr <- quant_pers_hla_tpm %>%
+    group_by(gene_name) %>%
+    summarise(r = round(cor(t2, t1), 2),
+              rho = round(cor(t2, t1, method = "spearman"), 2),
+              p = cor.test(t1, t2, method = "pearson", exact = FALSE)$p.value,
+              p = format(p, format = "e", digits = 2),
+              rho_lab = paste("r ==", r, "*', '~rho == ", rho)) %>%
+    ungroup() %>%
+    left_join(select(hla_limits, gene_name, x) %>%
+                  group_by(gene_name) %>%
+                  mutate(i = c("x", "y")) %>%
+                  ungroup() %>%
+                  pivot_wider(names_from = i, values_from = x))
+
+
+sfig_tp_d <- ggplot(data = quant_pers_hla_tpm,
+                    aes(t1, t2)) +
+    geom_blank(data = hla_limits, aes(x, y)) +
+    facet_wrap(~gene_name, scales = "free") +
+    geom_abline(linetype = 2, color = "gray70") +
+    geom_smooth(method = "lm", se = FALSE, color = "black", size = 1.5) +
+    geom_smooth(method = "lm", se = FALSE, color = "white", size = 1) +
+    geom_point(size = 2) +
+    geom_text(data = tps_corr, 
+              aes(x = x, y, label = rho_lab),
+              hjust = "inward", vjust = "inward", 
+              parse = TRUE,
+              size = 2.5) +
+    scale_x_continuous(labels = function(x) x/100) +
+    scale_y_continuous(labels = function(x) x/100) +
+    theme(panel.grid.minor = element_blank(),
+          text = element_text(size = 8, family = "Helvetica"),
+          plot.margin = margin(.25, .25, 0, .5, unit = "cm"),
+          panel.background = element_rect(fill = "grey96")) +
+    labs(x = "Original sample", y = "Fresh sample",
+         title = "Correlation of HLA estimates between timepoints")
+
+
+
+# E
+quant_timeps <- file.path("./salmon-pers/quant-bias", samples_timeps$sampleid, "quant.sf") %>%
+    setNames(samples_timeps$sampleid) %>%
+    map_df(read_tsv, .id = "sampleid")
+
+quant_timeps_hla <- quant_timeps %>%
+    filter(grepl("_[ABC]\\*", Name)) %>%
+    separate(sampleid, c("sampleid", "tp"), sep = "_") %>%
+    separate(Name, c("tx_id", "hla"), sep = "_") %>%
+    mutate(gene_name = sub("^([ABC])\\*.*$", "HLA-\\1", hla)) %>%
+    select(sampleid, tp, gene_name, tx_id, hla, tpm = TPM, count = NumReads) %>%
+    group_by(sampleid, tp, gene_name, hla) %>%
+    summarise_at(vars(tpm, count), sum) %>%
+    ungroup()
+
+quant_timeps_hla_counts <- quant_timeps_hla %>%
+    select(-tpm) %>%
+    group_by(sampleid, tp, gene_name) %>%
+    mutate(i = ifelse(n() == 1, "1_2", "1")) %>%
+    separate_rows(i, sep = "_") %>%
+    select(-i) %>%
+    mutate(n = ifelse(n_distinct(hla) == 1, 2L, 1L)) %>%
+    ungroup() %>%
+    mutate(count = count/n) %>%
+    select(-n)
+
+quant_timeps_hla_hets <- quant_timeps_hla_counts %>%
+    group_by(sampleid, tp, gene_name) %>%
+    filter(n_distinct(hla) == 2) %>%
+    ungroup()
+
+quant_timeps_hla_ratios <- quant_timeps_hla_hets %>%
+    group_by(sampleid, tp, gene_name) %>%
+    arrange(sampleid, tp, gene_name, hla) %>%
+    summarise(r = count[1]/count[2]) %>%
+    ungroup() %>%
+    pivot_wider(names_from = tp, values_from = r)
+
+cor_hla_ratios <- quant_timeps_hla_ratios %>%
+    group_by(gene_name) %>%
+    summarise(r = round(cor(t2, t1), 2),
+              rho = round(cor(t2, t1, method = "spearman"), 2),
+              p = cor.test(t1, t2, method = "pearson", exact = FALSE)$p.value,
+              p = format(p, format = "e", digits = 2),
+              rho_lab = paste("r ==", r, "*', '~rho == ", rho)) %>%
+    ungroup()
+
+sfig_tp_e <- ggplot(quant_timeps_hla_ratios, aes(t1, t2)) +
+    geom_smooth(method = "lm", se = FALSE, color = "black", size = 1.5) +
+    geom_smooth(method = "lm", se = FALSE, color = "white", size = 1) +
+    geom_point(size = 2) +
+    geom_text(data = cor_hla_ratios, 
+              aes(x = min(quant_timeps_hla_ratios$t1), 
+                  y = max(quant_timeps_hla_ratios$t2), 
+                  label = rho_lab),
+              hjust = "inward", vjust = "inward", 
+              parse = TRUE,
+              size = 2.5) +
+    facet_wrap(~gene_name) +
+    theme(panel.grid.minor = element_blank(),
+          text = element_text(size = 8, family = "Helvetica"),
+          plot.margin = margin(.25, .5, 0, 0.25, unit = "cm"),
+          panel.background = element_rect(fill = "grey96")) +
+    labs(x = "Original sample", y = "Fresh sample",
+         title = "Correlation of HLA allelic ratios between timepoints")
+
+
+# F
+quant_timeps_gene <- quant_timeps %>%
+    mutate(tx_id = sub("^([^_]+).*$", "\\1", Name)) %>%
+    left_join(select(annots, tx_id, gene_id, gene_name)) %>%
+    group_by(sampleid, gene_id, gene_name) %>%
+    summarise(tpm = sum(TPM),
+              count = sum(NumReads)) %>%
+    ungroup()
+
+quant_timeps_gene_tpm <- quant_timeps_gene %>%
+    left_join(samples_timeps) %>%
+    select(sampleid = x, tp = timepoint, gene_id, gene_name, tpm) %>%
+    pivot_wider(names_from = tp, values_from = tpm)
+
+quant_timeps_gene_tpm_rhos <- quant_timeps_gene_tpm %>%
+    group_by(gene_id, gene_name) %>%
+    filter(mean(t1 > 10) > .5) %>%
+    summarise(mu_t1 = mean(t1),
+              mu_t2 = mean(t2),
+              rho = cor(t2, t1, method = "spearman")) %>%
+    ungroup() %>%
+    filter(!is.na(rho))
+
+plot_rhos_df <- quant_timeps_gene_tpm_rhos %>%
+    arrange(desc(rho)) %>%
+    rowid_to_column("i")
+
+rho_labs_hla <- plot_rhos_df %>%
+    filter(gene_name %in% c("HLA-A", "HLA-B", "HLA-C"))
+
+rho_labs_tops <- top_n(plot_rhos_df, 5, rho) %>%
+    select(gene_name, rho) %>%
+    mutate(rho = round(rho, 2))
+
+rho_labs_bottom <- top_n(plot_rhos_df, 5, i) %>%
+    select(gene_name, rho) %>%
+    mutate(rho = round(rho, 2))
+
+sfig_tp_f <- ggplot(plot_rhos_df %>% mutate(a = "a"),
+                    aes(x = rho, y = a, fill = ..x..)) +
+    expand_limits(x = c(-1.25, 1)) +
+    scale_x_continuous(breaks = c(-1, -.5, 0, .5, 1)) +
+    geom_segment(x = .95, xend = .9, 
+                 y = 1, yend = 3, 
+                 linetype = 2, inherit.aes = FALSE) +
+    geom_segment(x = 1, xend = 1.2, 
+                 y = 1, yend = 3, 
+                 linetype = 2, inherit.aes = FALSE) +
+    annotation_custom(tableGrob(rho_labs_tops, rows = NULL,
+                                theme = ttheme_default(base_size = 7)), 
+                      xmin = .9, 
+                      xmax = 1.2, 
+                      ymin = 1, 
+                      ymax = 5) +
+    geom_segment(x = -1, xend = -1.25, 
+                 y = 1, yend = 3, 
+                 linetype = 2, inherit.aes = FALSE) +
+    geom_segment(x = -1, xend = -1, 
+                 y = 1, yend = 3, 
+                 linetype = 2, inherit.aes = FALSE) +
+    annotation_custom(tableGrob(rho_labs_bottom, rows = NULL,
+                                theme = ttheme_default(base_size = 7)), 
+                      xmin = -1.25, 
+                      xmax = -1.1, 
+                      ymin = 1, 
+                      ymax = 5) +
+    geom_density_ridges_gradient(show.legend = FALSE, scale = 4.5) +
+    geom_label_repel(data = rho_labs_hla, 
+                     aes(x = rho, y = "a", label = gene_name),
+                     min.segment.length = 0,
+                     inherit.aes = FALSE,
+                     size = 2.5,
+                     max.overlaps = Inf) +
+    scale_fill_gradient2() +
+    theme_minimal() +
+    theme(text = element_text(size = 10, family = "Helvetica"),
+          axis.title.y = element_blank(),
+          axis.text.y = element_blank(),
+          axis.ticks.y = element_blank(),
+          panel.grid = element_blank(),
+          plot.title = element_text(size = 10),
+          plot.margin = margin(.5, .5, 0, 1, unit = "cm")) +
+    labs(title = "Distribution of gene-wise Spearman correlation coefficients between timepoints")
+
+sfig_tp <- 
+    plot_grid(sfig_tp_a, 
+              sfig_tp_b, 
+              sfig_tp_c, 
+              plot_grid(sfig_tp_d, sfig_tp_e, nrow = 1, 
+                        labels = c("D)", "E)"), label_size = 10), 
+              sfig_tp_f, 
+              labels = c("A)", "B)", "C)", "", "F)"), label_size = 10,
+              ncol = 1, rel_heights = c(.9, .9, 1.5, 1, 1.5)) +
+    theme(plot.background = element_rect(fill = "white", color = "white"))
+
+ggsave("./plots/sfig_tp.jpg", sfig_tp, width = 8, height = 10)
 
 
 
@@ -2268,116 +2767,10 @@ pc_loadings_peer %>%
          title = "Top 10 contributions to each direction")
 
 ######
-salmon_all_wide <- salmon_all %>%
-    filter(sampleid %in% samples_timeps$sampleid) %>%
-    mutate(sampleid = sub("_t[12]$", "", sampleid),
-           timepoint = sub("imepoint ", "", timepoint)) %>%
-    pivot_wider(names_from = timepoint, values_from = tpm) 
-
-tps_means <- salmon_all_wide %>%
-    group_by(gene_id, gene_name) %>%
-    summarise_at(vars(T1:T2), mean) %>%
-    ungroup()
-
-tps_props <- salmon_all_wide %>%
-    group_by(sampleid) %>%
-    mutate_at(vars(T1:T2), ~./sum(.) * 100) %>%
-    ungroup()
-
-ggplot(tps_means, aes(T1, T2)) +
-    geom_point()
-
-top_20 <- tps_props %>% 
-    mutate(d = (T1 - T2)) %>%
-    group_by(gene_id, gene_name) %>%
-    summarise(d = mean(d)) %>%
-    ungroup() %>%
-    arrange(desc(abs(d))) %>%
-    slice(1:25)
-
-tps_props %>%
-    filter(gene_id %in% top_20$gene_id) %>%
-    mutate(gene_id = factor(gene_id, levels = top_20$gene_id)) %>%
-    pivot_longer(T1:T2, names_to = "timepoint", values_to = "pct") %>%
-    split(.$gene_id) %>%
-    map(~ggplot(., aes(sampleid, pct)) +
-            geom_col() +
-            scale_y_continuous(labels = scales::percent,
-                               breaks = scales::pretty_breaks(3)) +
-            facet_wrap(~timepoint, ncol = 1) +
-            theme_minimal() +
-            theme(axis.text.x = element_blank(),
-                  panel.grid.major.x = element_blank(),
-                  panel.grid.minor.y = element_blank(),
-                  plot.title = element_text(size = 8)) +
-            labs(x = NULL, y = NULL, title = unique(.$gene_name))) %>%
-    plot_grid(plotlist = ., ncol = 5) +
-    theme(plot.background = element_rect(color = "white", fill = "white"))
 
 
-salmon_pers_tx <- "./salmon-pers/quant/%s/quant.sf" %>%
-    sprintf(ids) %>%
-    setNames(ids) %>%
-    map_df(. %>% read_tsv %>% 
-               select(tx_id = Name, len = EffectiveLength, counts = NumReads, tpm = TPM), 
-           .id = "sampleid") %>%
-    mutate(timepoint = ifelse(grepl("t1$", sampleid), "Timepoint 1", "Timepoint 2")) %>%
-    mutate(tx_id = ifelse(grepl("_[ABC]\\*", tx_id),
-                          sub("^([^_]+).*$", "\\1", tx_id), 
-                          tx_id)) %>%
-    left_join(tx_annots) %>%
-    select(sampleid, timepoint, tx_id, tx_type, len, gene_id, gene_name, counts, tpm)
 
-salmon_pers_hla_tpm <- salmon_pers_tx %>%
-    filter(sampleid %in% samples_timeps$sampleid) %>%
-    filter(gene_name %in% c("HLA-A", "HLA-B", "HLA-C")) %>%
-    group_by(sampleid, timepoint, gene_name) %>%
-    summarise(tpm = sum(tpm)) %>%
-    ungroup() %>%
-    mutate(timepoint = sub("imepoint ", "", timepoint),
-           sampleid = sub("_t[12]$", "", sampleid)) %>%
-    pivot_wider(names_from = timepoint, values_from = tpm)
 
-tps_hla_cor <- salmon_pers_hla_tpm %>%
-    group_by(gene_name) %>%
-    summarise(x = min(pmin(T1, T2)),
-              y = max(pmax(T1, T2)),
-              r = round(cor(T2, T1), 2),
-              rho = round(cor(T2, T1, method = "spearman"), 2),
-              p = cor.test(T1, T2, method = "pearson", exact = FALSE)$p.value,
-              p = format(p, format = "e", digits = 2),
-              rho_lab = paste("r ==", r, "*', '~rho == ", rho)) %>%
-    ungroup()
-
-hla_limits <- salmon_pers_hla_tpm %>%
-    pivot_longer(T1:T2, names_to = "dummy") %>%
-    group_by(gene_name) %>%
-    summarise(r = range(value)) %>%
-    ungroup() %>%
-    mutate(r2 = r) %>%
-    select(gene_name, x = r, y = r2)
-
-tps_plot1 <- ggplot() +
-    geom_blank(data = hla_limits, aes(x, y)) +
-    facet_wrap(~gene_name, scales = "free") +
-    geom_abline(linetype = 2) +
-    geom_point(data = salmon_pers_hla_tpm,
-               aes(T1, T2), 
-               size = 2.5) +
-    geom_text_repel(data = salmon_pers_hla_tpm, aes(T1, T2, label = sampleid), 
-                    size = 2.5, min.segment.length = 0) +
-    geom_text(data = tps_hla_cor, 
-              aes(x = x, y, label = rho_lab),
-              hjust = "inward", vjust = "inward", 
-              parse = TRUE,
-              size = 4) +
-    scale_color_viridis_c() +
-    theme_bw() +
-    theme(panel.grid.minor = element_blank(),
-          panel.grid.major = element_line(color = "grey96"),
-          plot.margin = margin(.5, .5, 0, .5, unit = "cm")) +
-    labs(x = "Timepoint 1", y = "Timepoint 2",
-         title = "Raw TPM estimates")
 
 
 # peer
@@ -2467,95 +2860,6 @@ ggplot() +
 
 
 
-# biotypes
-
-tps_df <- inner_join(salmon_tx, select(samples_timeps, sampleid, x), by = "sampleid") %>%
-    select(sampleid = x, timepoint, tx_type, gene_id, gene_name, tpm) %>%
-    group_by(sampleid, timepoint, gene_id, gene_name) %>%
-    summarise(tpm = sum(tpm)) %>%
-    group_by(sampleid, timepoint) %>%
-    mutate(p = tpm/sum(tpm)) %>%
-    ungroup()
-
-top_10_genes <- tps_df %>%
-    group_by(gene_id, gene_name) %>%
-    summarise(avg_p = mean(p)) %>%
-    ungroup() %>%
-    arrange(desc(avg_p)) %>%
-    slice(1:10)
-
-tps_final <- tps_df %>%
-    mutate(lab = ifelse(gene_id %in% top_10_genes$gene_id, gene_name, "Other"),
-           lab = factor(lab, levels = rev(c(top_10_genes$gene_name, "Other"))),
-           timepoint = sub("Timepoint ", "", timepoint)) %>%
-    group_by(sampleid, timepoint, lab) %>%
-    summarise(p = sum(p)) %>%
-    ungroup()
-
-cols <- c("grey90", "black", "lightpink", "green4", "red3", "salmon", 
-          "lightslateblue", "tomato4", "steelblue1", "steelblue4", "midnightblue")
-
-tps_plot3 <- ggplot(tps_final, aes(timepoint, p, fill = lab)) +
-    geom_col(size = 0) +
-    scale_fill_manual(values = cols) +
-    scale_y_continuous(labels = scales::percent) +
-    facet_wrap(~sampleid, nrow = 1) +
-    theme_minimal() +
-    theme(panel.background = element_rect(color = "white", fill = "white"),
-          panel.grid = element_blank(),
-          plot.margin = margin(.5, .5, 0, .5, unit = "cm"),
-          legend.key.height = unit(.25, "cm"),
-          strip.text = element_text(size = 8)) +
-    labs(fill = "Gene", y = NULL, 
-         title = "Proportion of total transcripts contributed by specific genes.")
-
-tps_biotype <- inner_join(salmon_tx, select(samples_timeps, sampleid, x), by = "sampleid") %>%
-    select(sampleid = x, timepoint, tx_type, gene_id, gene_name, tpm) %>%
-    group_by(sampleid, timepoint, tx_type) %>%
-    summarise(tpm = sum(tpm)) %>%
-    group_by(sampleid, timepoint) %>%
-    mutate(p = tpm/sum(tpm)) %>%
-    ungroup()
-
-top_5_types <- tps_biotype %>%
-    group_by(timepoint, tx_type) %>%
-    summarise(avg_p = mean(p)) %>%
-    ungroup() %>%
-    arrange(desc(avg_p)) %>%
-    group_by(timepoint) %>%
-    top_n(5, avg_p) %>%
-    ungroup() %>%
-    arrange(timepoint, desc(avg_p)) %>%
-    distinct(tx_type) %>%
-    pull(tx_type)
-
-tps_biotype_final <- tps_biotype %>%
-    mutate(lab = ifelse(tx_type %in% top_5_types, tx_type, "Other"),
-           lab = factor(lab, levels = rev(c(top_5_types, "Other"))),
-           timepoint = sub("Timepoint ", "", timepoint)) %>%
-    group_by(sampleid, timepoint, lab) %>%
-    summarise(p = sum(p)) %>%
-    ungroup()
-
-tps_plot4 <- ggplot(tps_biotype_final, aes(timepoint, p, fill = lab)) +
-    geom_col(size = 0) +
-    scale_fill_manual(values = c("grey90", pal_npg()(6)[c(-1, -6)], "black")) +
-    scale_y_continuous(labels = scales::percent) +
-    facet_wrap(~sampleid, nrow = 1) +
-    theme_minimal() +
-    theme(panel.background = element_rect(color = "white", fill = "white"),
-          plot.margin = margin(.5, .5, 0, .5, unit = "cm"),
-          panel.grid = element_blank(),
-          strip.text = element_text(size = 8)) +
-    labs(y = NULL, fill = "Biotype",
-         title = "Proportion of total transcripts in each Gencode biotype.")
-
-
-tps_out <- plot_grid(tps_plot1, tps_plot2, tps_plot3, tps_plot4, ncol = 1,
-                     labels = c("A)", "B)", "C)", "D)")) +
-    theme(plot.background = element_rect(color = "white", fill = "white"))
-
-ggsave("./plots/timepoints.png", tps_out, width = 8.5, height = 10)
 
 
 ################################################################################
@@ -2646,22 +2950,6 @@ b2m_fc %>%
 
 
 # Shorten isoforms
-isos <- 
-    "../indices/personalize_transcripts/personalized_transcripts_plusShort.fa" %>%
-    Biostrings::readDNAStringSet()
-
-iso_df <- tibble(id = names(isos), len = Biostrings::width(isos)) %>%
-    filter(grepl("_A\\*", id)) %>%
-    separate(id, c("tx_id", "hla"), sep = "_") %>%
-    select(hla, tx_id, len) %>%
-    group_by(hla, tx_id) %>%
-    mutate(lenclass = case_when(n() == 1 ~ "single",
-                                n() == 2 & len == min(len) ~ "short",
-                                n() == 2 & len == max(len) ~ "long",
-                                TRUE ~ NA_character_)) %>%
-    ungroup() %>%
-    arrange(hla, tx_id, len)
-
 salmon_pers_short <- "./salmon-pers/quant-shorten/%s/quant.sf" %>%
     sprintf(samples_t1) %>%
     setNames(samples_t1) %>%
@@ -2670,21 +2958,26 @@ salmon_pers_short <- "./salmon-pers/quant-shorten/%s/quant.sf" %>%
 salmon_short_hla <- salmon_pers_short %>%
     filter(grepl("_A\\*", Name)) %>%
     separate(Name, c("tx_id", "hla"), sep = "_") %>%
+    separate(hla, c("hla", "lenclass"), sep = "\\.") %>%
+    mutate(lenclass = recode(lenclass, "l" = "Long", "s" = "Short")) %>%
     mutate(sampleid = sub("_t1$", "", sampleid),
            lineage = sub("^(A\\*\\d+).*$", "\\1", hla)) %>%
-    select(sampleid, tx_id, hla, lineage, len = Length, 
-           elen = EffectiveLength, tpm = TPM, count = NumReads) %>%
-    left_join(iso_df)
+    select(sampleid, tx_id, hla, lineage, lenclass, tpm = TPM, count = NumReads)
 
 salmon_short_hla %>%
-    filter(lenclass != "single") %>%
-    ggplot(aes(x = reorder_within(lineage, by = tpm, within = tx_id, fun = median),
-           y = tpm)) +
-    geom_quasirandom(aes(color = lenclass), method = "smiley", width = .25) +
-    scale_x_reordered() +
-    facet_wrap(~tx_id, scale = "free") +
-    theme(axis.text.x = element_text(angle = 90))
-    
+    filter(lenclass != "u") %>%
+    ggplot(aes(x = lineage, y = tpm)) +
+    geom_quasirandom(aes(fill = lenclass), method = "smiley",
+                     shape = 21, stroke = .2, width = .25) +
+    scale_fill_manual(values = c("Short" = "white", "Long" = "black")) +
+    facet_wrap(~tx_id, scales = "free", ncol = 2) +
+    theme(text = element_text(size = 8, family = "Helvetica"),
+          axis.text.x = element_text(angle = 90),
+          panel.grid.minor = element_blank(),
+          plot.margin = margin(.5, .5, 0, .5, unit = "cm"),
+          panel.background = element_rect(fill = "grey96"))
+
+ggsave("./plots/isoforms_a.jpg", height = 6, width = 8)
 
 
 

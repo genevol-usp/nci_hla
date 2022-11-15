@@ -61,14 +61,34 @@ ground_truth <- "./make_simulation_data/phenotypes.tsv" %>%
     pivot_longer(starts_with("66K"), names_to = "sampleid", values_to = "true_counts") %>%
     select(sampleid, gene_id, gene_name, tx_id, true_counts)
 
+transc_lens <- 
+    tibble(tx_id = names(transcripts),
+           len = width(transcripts)) %>%
+    mutate(eff_len = len - 261 + 1,
+           eff_len = ifelse(eff_len < 0, 0, eff_len)) %>%
+    select(tx_id, eff_len)
+
+ground_truth_tx_tpms <- ground_truth %>%
+    filter(true_counts > 0) %>%
+    left_join(transc_lens) %>%
+    group_by(sampleid) %>%
+    mutate(rate = log(true_counts) - log(eff_len),
+           rate = ifelse(eff_len == 0, 0, rate),
+           denom = log(sum(exp(rate))),
+           tpm = exp(rate - denom + log(1e6)),
+           tpm = replace_na(tpm, 0)) %>%
+    ungroup() %>%
+    select(sampleid, gene_id, gene_name, tx_id, true_counts, true_tpm = tpm)
+
 ## gene-level true expression
-ground_truth_genes <- ground_truth %>%
+ground_truth_genes <- ground_truth_tx_tpms %>%
     group_by(sampleid, gene_id, gene_name) %>%
-    summarise(true_counts = sum(true_counts)) %>%
+    summarise(true_counts = sum(true_counts),
+              true_tpm = sum(true_tpm)) %>%
     ungroup()
 
 # Compute weighted distances
-dist_df <- ground_truth %>%
+dist_df <- ground_truth_tx_tpms %>%
     filter(grepl("\\*", tx_id)) %>%
     filter(true_counts > 0) %>%
     arrange(sampleid) %>%
@@ -89,10 +109,23 @@ salmon_ref <- sprintf("./salmon/quant/%s/quant.sf", samples) %>%
     map_df(read_tsv, .id = "sampleid") %>%
     left_join(annots, by = c("Name" = "tx_id")) %>%
     group_by(sampleid, gene_id, gene_name) %>%
-    summarise(counts = sum(NumReads)) %>%
+    summarise(counts = sum(NumReads),
+              tpm = sum(TPM)) %>%
     ungroup() %>%
     full_join(ground_truth_genes, by = c("sampleid", "gene_id", "gene_name")) %>%
-    mutate_at(vars(counts, true_counts), ~replace_na(., 0))
+    mutate_at(vars(counts, true_counts, tpm, true_tpm), ~replace_na(., 0))
+
+## Salmon hla-mapper
+salmon_mapper <- sprintf("./pipeline_results/salmon/%s/quant.sf", samples) %>%
+    setNames(samples) %>%
+    map_df(read_tsv, .id = "sampleid") %>%
+    left_join(annots, by = c("Name" = "tx_id")) %>%
+    group_by(sampleid, gene_id, gene_name) %>%
+    summarise(counts = sum(NumReads),
+              tpm = sum(TPM)) %>%
+    ungroup() %>%
+    full_join(ground_truth_genes, by = c("sampleid", "gene_id", "gene_name")) %>%
+    mutate_at(vars(counts, true_counts, tpm, true_tpm), ~replace_na(., 0))
 
 ## Salmon pers
 salmon_pers <- sprintf("./salmon-pers/quant/%s/quant.sf", samples) %>%
@@ -100,47 +133,16 @@ salmon_pers <- sprintf("./salmon-pers/quant/%s/quant.sf", samples) %>%
     map_df(read_tsv, .id = "sampleid") %>%
     left_join(all_annots, by = c("Name" = "tx_id")) %>%
     group_by(sampleid, gene_id, gene_name) %>%
-    summarise(counts = sum(NumReads)) %>%
+    summarise(counts = sum(NumReads),
+              tpm = sum(TPM)) %>%
     ungroup() %>%
     full_join(ground_truth_genes, by = c("sampleid", "gene_id", "gene_name")) %>%
-    mutate_at(vars(counts, true_counts), ~replace_na(., 0))
-
-## HLApers
-hlapers_annot <- sprintf("./hlapers/genotypes/%s_genotypes.tsv", samples) %>%
-    setNames(samples) %>%
-    map_df(read_tsv, .id = "sampleid") %>%
-    mutate(allele = sub("^([^-]+).*$", "\\1", allele),
-	   gene_name = paste0("HLA-", locus)) %>%
-    left_join(distinct(annots, gene_id, gene_name), by = "gene_name") %>%
-    distinct(gene_id, gene_name, tx_id = allele)
-
-hlapers <- sprintf("./hlapers/quant/%s_quant/quant.sf", samples) %>%
-    setNames(samples) %>%
-    map_df(read_tsv, .id = "sampleid") %>%
-    mutate(Name = sub("^([^-]+).*$", "\\1", Name)) %>%
-    left_join(bind_rows(annots, hlapers_annot), by = c("Name" = "tx_id")) %>%
-    group_by(sampleid, gene_id, gene_name) %>%
-    summarise(counts = sum(NumReads)) %>%
-    ungroup() %>%
-    full_join(ground_truth_genes, by = c("sampleid", "gene_id", "gene_name")) %>%
-    mutate_at(vars(counts, true_counts), ~replace_na(., 0))
-
-## hla-mapper::rna
-hlamapper <- sprintf("./hla-mapper/quant/%s_gene.txt", samples) %>%
-    setNames(samples) %>%
-    map_df(~read_tsv(., comment = "#", col_types = "c----dd") %>% 
-	   select(gene_id = 1, len = 2, counts = 3), 
-           .id = "sampleid") %>%
-    left_join(distinct(annots, gene_id, gene_name), by = "gene_id") %>%
-    full_join(ground_truth_genes, by = c("sampleid", "gene_id", "gene_name")) %>%
-    mutate_at(vars(counts:true_counts), ~replace_na(., 0)) %>%
-    select(sampleid, gene_id, gene_name, counts, true_counts)
+    mutate_at(vars(counts, true_counts, tpm, true_tpm), ~replace_na(., 0))
 
 quant_df <- 
     bind_rows("Salmon ref genome" = salmon_ref,
 	      "Salmon personalized" = salmon_pers,
-	      "HLApers" = hlapers,
-	      "hla-mapper::rna" = hlamapper,
+	      "Salmon hla-mapper" = salmon_mapper,
 	      .id = "method") %>%
     mutate(method = factor(method, levels = unique(method)))
 
@@ -156,13 +158,82 @@ write_rds(hla_counts, "./plot_data/hla_est_counts.rds")
 ## Compute TPM/TRUE for HLA
 count_rates <- quant_df %>%
     filter(gene_name %in% c("HLA-A", "HLA-B", "HLA-C")) %>%
-    mutate(rate_counts = counts/true_counts) %>%
-    select(method, sampleid, gene_id, gene_name, rate_counts) %>%
+    mutate(rate_counts = counts/true_counts,
+           rate_tpm = tpm/true_tpm) %>%
+    select(method, sampleid, gene_id, gene_name, rate_counts, rate_tpm) %>%
     arrange(method, sampleid, gene_name) %>%
     mutate(gene_name = factor(gene_name, levels = unique(gene_name)))
 
 write_rds(count_rates, "./plot_data/count_rates.rds")
 
+
+### HLApers
+#hlapers_annot <- sprintf("./hlapers/genotypes/%s_genotypes.tsv", samples) %>%
+#    setNames(samples) %>%
+#    map_df(read_tsv, .id = "sampleid") %>%
+#    mutate(allele = sub("^([^-]+).*$", "\\1", allele),
+#	   gene_name = paste0("HLA-", locus)) %>%
+#    left_join(distinct(annots, gene_id, gene_name), by = "gene_name") %>%
+#    distinct(gene_id, gene_name, tx_id = allele)
+#
+#hlapers <- sprintf("./hlapers/quant/%s_quant/quant.sf", samples) %>%
+#    setNames(samples) %>% .[1] %>%
+#    map_df(read_tsv, .id = "sampleid") %>%
+#    mutate(Name = sub("^([^-]+).*$", "\\1", Name)) %>%
+#    left_join(bind_rows(annots, hlapers_annot), by = c("Name" = "tx_id")) %>%
+#    group_by(sampleid, gene_id, gene_name) %>%
+#    summarise(counts = sum(NumReads),
+#              tpm = sum(TPM)) %>%
+#    ungroup() %>%
+#    full_join(ground_truth_genes, by = c("sampleid", "gene_id", "gene_name")) %>%
+#    mutate_at(vars(counts, true_counts, tpm, true_tpm), ~replace_na(., 0))
+#
+#
+#all_ref_isoforms <- readDNAStringSet("../indices/gencode.transcripts.fa")
+#
+#hla_all_iso <- read_tsv("../indices/transcript_annotation_df.tsv") %>%
+#    filter(gene_name %in% c("HLA-A", "HLA-B", "HLA-C")) %>%
+#    select(gene_name, tx_id)
+#
+#
+#    all_ref_isoforms[hla_all_iso$tx_id] %>%
+#    {tibble(tx_id = names(.), len = width(.))} %>%
+#    left_join(hla_all_iso) %>%
+#    group_by(gene_name) %>%
+#    summarise(median_len = median(len)) %>%
+#    ungroup()
+#      
+#
+#
+#
+#hlapers %>%
+#    mutate(counts_back = TPM/1e6 * EffectiveLength * sum(NumReads/EffectiveLength)) %>%
+#    filter(grepl("HLA-(A|B|C)", gene_name))
+#
+#
+#
+#
+### hla-mapper::rna
+#hlamapper <- sprintf("./hla-mapper/quant/%s_gene.txt", samples) %>%
+#    setNames(samples) %>%
+#    map_df(~read_tsv(., comment = "#", col_types = "c----dd") %>% 
+#	   select(gene_id = 1, len = 2, counts = 3), 
+#           .id = "sampleid") %>%
+#    left_join(distinct(annots, gene_id, gene_name), by = "gene_id") %>%
+#    full_join(ground_truth_genes, by = c("sampleid", "gene_id", "gene_name")) %>%
+#    mutate_at(vars(counts:true_counts), ~replace_na(., 0)) %>%
+#    select(sampleid, gene_id, gene_name, counts, true_counts)
+#
+#hlamapper_edit <- sprintf("./hla-mapper/quant/%s_gene_edit.txt", samples) %>%
+#    setNames(samples) %>%
+#    map_df(~read_tsv(., comment = "#", col_types = "c----dd") %>% 
+#	   select(gene_id = 1, len = 2, counts = 3), 
+#           .id = "sampleid") %>%
+#    left_join(distinct(annots, gene_id, gene_name), by = "gene_id") %>%
+#    full_join(ground_truth_genes, by = c("sampleid", "gene_id", "gene_name")) %>%
+#    mutate_at(vars(counts:true_counts), ~replace_na(., 0)) %>%
+#    select(sampleid, gene_id, gene_name, counts, true_counts)
+#
 # hla-mapper coverage
 #
 ### exon coordinates

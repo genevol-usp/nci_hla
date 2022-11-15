@@ -114,6 +114,8 @@ shorten_isos <- tx_annots %>%
     slice(1:6) %>%
     pull(tx_id)
 
+write_lines(shorten_isos, "./plot_data/hla_a_fullisoforms.txt")
+
 
 fix_lengths <- function(salmon_df) {
 

@@ -2,12 +2,12 @@
 
 #SBATCH -N 1
 #SBATCH -c 8
-#SBATCH --mem=48gb
+#SBATCH --mem=100gb
 #SBATCH --time=48:00:00
 #SBATCH -p long
 #SBATCH --array=1-96
-#SBATCH --job-name=STARMAP
-#SBATCH -o /home/vitor/nci_hla/analysis/map_to_genome/log/STARMAP-%a
+#SBATCH --job-name=MAP
+#SBATCH -o /home/vitor/nci_hla/analysis/map_to_genome/log/MAP-%a
 
 # IO
 SAMPLELIST=/home/vitor/nci_hla/analysis/samples.txt
@@ -29,43 +29,41 @@ INDEX=/home/vitor/nci_hla/indices/STARLEAF
 OUT=/scratch/vitor/bam_leaf/${SAMPLE}
 
 # Mapping
-STAR --runMode alignReads \
-    --runThreadN $SLURM_CPUS_PER_TASK \
-    --genomeDir $INDEX \
-    --readFilesIn $FQ1 $FQ2 \
-    --readFilesCommand zcat  \
-    --outFilterMismatchNoverReadLmax 0.04 \
-    --twopassMode Basic \
-    --outSAMstrandField intronMotif \
-    --outSAMtype BAM SortedByCoordinate \
-    --outSAMunmapped Within KeepPairs \
-    --outFileNamePrefix ${OUT}_
-
+#$STAR --runMode alignReads \
+#    --runThreadN $SLURM_CPUS_PER_TASK \
+#    --genomeDir $INDEX \
+#    --readFilesIn $FQ1 $FQ2 \
+#    --readFilesCommand zcat  \
+#    --outFilterMismatchNoverReadLmax 0.04 \
+#    --twopassMode Basic \
+#    --outSAMstrandField intronMotif \
+#    --outSAMtype BAM SortedByCoordinate \
+#    --outSAMunmapped Within KeepPairs \
+#    --outFileNamePrefix ${OUT}_
+#
 BAM=${OUT}_Aligned.sortedByCoord.out.bam
-samtools index -@ $SLURM_CPUS_PER_TASK $BAM
-
+#samtools index -@ $SLURM_CPUS_PER_TASK $BAM
+#
 ## hla-mapper
-#DB=/home/vitor/hla-mapper_new/db/hla-mapper_db_004.1_HLA
-#HLAOUT=/scratch/vitor/bam_leaf/hlamapper/${SAMPLE}
-#
-#$HLAMAPPER rna \
-#    bam=$BAM \
-#    sample=$SAMPLE \
-#    threads=$SLURM_CPUS_PER_TASK \
-#    db=$DB \
-#    output=$HLAOUT \
-#    bwa=$BWA \
-#    star=$STAR
-#
+DB=/home/vitor/ver_4.4/hla-mapper_db_004.3_HLA
+HLAOUT=/scratch/vitor/hlamapper/${SAMPLE}
+
+hla-mapper rna \
+    bam=$BAM \
+    sample=$SAMPLE \
+    threads=$SLURM_CPUS_PER_TASK \
+    db=$DB \
+    output=$HLAOUT
+
 #BAMHLA=${HLAOUT}/${SAMPLE}.adjusted.bam
 #BAMREFCHR=${OUT}_refchrs.bam
-#JUNC=/scratch/vitor/bam_leaf/hlamapper/junctions/${SAMPLE}.junc 
+#JUNC=/scratch/vitor/bam_leaf/${SAMPLE}.junc 
 #
-# Extract junctions
-#samtools index -@ $SLURM_CPUS_PER_TASK $BAMHLA
-#samtools view -@ $SLURM_CPUS_PER_TASK -b -h $BAM `(seq 1 22; echo X) | sed 's/^/chr/'` > $BAMREFCHR
+## Extract junctions
+##samtools index -@ $SLURM_CPUS_PER_TASK $BAMHLA
+#samtools view -@ $SLURM_CPUS_PER_TASK -b -h -q 255 $BAM `(seq 1 22; echo X) | sed 's/^/chr/'` > $BAMREFCHR
 #samtools index -@ $SLURM_CPUS_PER_TASK $BAMREFCHR
 #regtools junctions extract -s 0 -a 8 -m 50 -M 500000 $BAMREFCHR -o $JUNC
 #
-#rm $BAMREFCHR
+#rm $BAMREFCHR*
 #

@@ -4,7 +4,7 @@
 #SBATCH -c 4
 #SBATCH --mem=24gb
 #SBATCH --time=24:00:00
-#SBATCH -p short
+#SBATCH -p long
 #SBATCH --array=1-50
 #SBATCH --job-name=simulpipe
 #SBATCH -o /scratch/vitor/log/simulation.o-%A-%a
@@ -14,7 +14,7 @@ STAR=${HOME}/HLAMAPPER/STAR-2.7.3a/bin/Linux_x86_64_static/STAR
 HLAMAPPER=/lab-share/IM-Gutierrez-e2/Public/vitor/nci/hlamapper/build/hla-mapper
 SAMTOOLS=${HOME}/HLAMAPPER/samtools-1.11/samtools
 BWA=${HOME}/HLAMAPPER/bwa/bwa-0.7.17/bwa
-MUDSKIPPER=${HOME}/Libraries/mudskipper/target/release/mudskipper
+MUDSKIPPER=${HOME}/Libraries/mudskipper2/target/release/mudskipper
 SALMON=${HOME}/Libraries/salmon-1.8.0_linux_x86_64/bin/salmon
 
 # References and annotations
@@ -32,42 +32,34 @@ FQ2=/media/storage/genevol/vitor/simulation/fastq/${SAMPLEID}/sample_01_2.fastq.
 OUT=/media/storage/genevol/vitor/simulation/bam/${SAMPLEID}
 BAM=${OUT}_Aligned.sortedByCoord.out.bam
 HLABAM=/media/storage/genevol/vitor/simulation/bam_hlamapper/${SAMPLEID}/${SAMPLEID}.adjusted.bam
-HLAFIX=/scratch/vitor/${SAMPLEID}.fixed
 HLASORTED=/scratch/vitor/${SAMPLEID}.sortedByName.bam 
 BAMTRANSC=/media/storage/genevol/vitor/simulation/bam_transc/${SAMPLEID}.bam
 
 # Main
-$STAR --runMode alignReads \
-    --runThreadN $SLURM_CPUS_PER_TASK \
-    --genomeDir $INDEX \
-    --readFilesIn $FQ1 $FQ2 \
-    --readFilesCommand zcat  \
-    --outFilterMismatchNmax 999 \
-    --outFilterMismatchNoverReadLmax 0.04 \
-    --outSAMtype BAM SortedByCoordinate \
-    --outSAMunmapped Within KeepPairs \
-    --outFileNamePrefix ${OUT}_
-
-$SAMTOOLS index $BAM
-
-$HLAMAPPER rna \
-    bam=$BAM \
-    sample=$SAMPLEID \
-    threads=$SLURM_CPUS_PER_TASK \
-    db=$HOME/hla-mapper_new/db/hla-mapper_db_004.1_HLA \
-    output=/media/storage/genevol/vitor/simulation/bam_hlamapper/${SAMPLEID} \
-    bwa=$BWA \
-    samtools=$SAMTOOLS \
-    star=$STAR
-
-samtools view $HLABAM |\
-    sort --parallel=$SLURM_CPUS_PER_TASK -u > ${HLAFIX}.sam 
-
-samtools view -H $HLABAM |\
-    cat - ${HLAFIX} |\
-    samtools view -@ $SLURM_CPUS_PER_TASK -Sb - > ${HLAFIX}.bam
-
-samtools sort -@ $SLURM_CPUS_PER_TASK -n -o $HLASORTED ${HLAFIX}.bam
+#$STAR --runMode alignReads \
+#    --runThreadN $SLURM_CPUS_PER_TASK \
+#    --genomeDir $INDEX \
+#    --readFilesIn $FQ1 $FQ2 \
+#    --readFilesCommand zcat  \
+#    --outFilterMismatchNmax 999 \
+#    --outFilterMismatchNoverReadLmax 0.04 \
+#    --outSAMtype BAM SortedByCoordinate \
+#    --outSAMunmapped Within KeepPairs \
+#    --outFileNamePrefix ${OUT}_
+#
+#samtools index $BAM
+#
+#$HLAMAPPER rna \
+#    bam=$BAM \
+#    sample=$SAMPLEID \
+#    threads=$SLURM_CPUS_PER_TASK \
+#    db=$HOME/hla-mapper_new/db/hla-mapper_db_004.1_HLA \
+#    output=/media/storage/genevol/vitor/simulation/bam_hlamapper/${SAMPLEID} \
+#    bwa=$BWA \
+#    samtools=$SAMTOOLS \
+#    star=$STAR
+#
+samtools sort -@ $SLURM_CPUS_PER_TASK -n -o $HLASORTED $HLABAM
 
 $MUDSKIPPER bulk \
     --threads $SLURM_CPUS_PER_TASK \
@@ -75,7 +67,7 @@ $MUDSKIPPER bulk \
     --alignment $HLASORTED \
     --out $BAMTRANSC
 
-rm $HLASORTED ${HLAFIX}.sam ${HLAFIX}.bam
+rm $HLASORTED
 
 $SALMON quant \
     -p $SLURM_CPUS_PER_TASK \

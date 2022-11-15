@@ -4,7 +4,7 @@
 #PBS -l mem=64gb
 #PBS -l walltime=24:00:00
 #PBS -q short
-#PBS -t 3-50
+#PBS -t 1-50
 #PBS -N hla-mapper
 #PBS -j oe
 #PBS -o log/$PBS_JOBNAME

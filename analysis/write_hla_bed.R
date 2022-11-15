@@ -6,7 +6,6 @@ annot <-
 	     col_names = c("chr", "feature", "start", "end", "strand", "info")) %>%
     mutate(chr = factor(chr, levels = str_sort(unique(chr), numeric = TRUE)))
 
-
 exon_hla <- annot %>%
     filter(feature == "exon") %>%
     mutate(gene_id = str_extract(info, "(?<=gene_id\\s\")[^\"]+"),
@@ -36,13 +35,16 @@ annot_out <-
               .id = "feature") %>%
     arrange(gene_name, gene_id, transcript_id, start)
 
-annot_out %>%
-    group_by(gene_name) %>%
-    summarise(start = min(start), end = max(end)) %>%
-    ungroup() %>%
-    mutate(start = start - 1L,
-	   chr = map_chr(gene_name, ~unique(exon_hla$chr[exon_hla$gene_name == .]))) %>%
-    select(chr, start, end) %>%
-    write_tsv("./plot_data/hla.bed", col_names=FALSE)
-
 write_rds(annot_out, "./plot_data/transcripts_annot.rds")
+
+gene_hla <- annot %>%
+    filter(feature == "gene") %>%
+    filter(grepl("HLA-[ABC]", info)) %>%
+    mutate(gene_name = str_extract(info, "(?<=gene_name\\s\")[^\"]+")) %>%
+    select(chr, gene_name, start, end)
+
+
+gene_hla %>%
+    select(chr, start, end) %>%
+    mutate(start = start - 1L) %>%
+    write_tsv("./plot_data/hla.bed", col_names=FALSE)

@@ -37,56 +37,68 @@ ggsave("./plots/personalized_identity.jpeg")
 dist_df <- read_rds("./plot_data/weighted_distances.rds")
 count_rates <- read_rds("./plot_data/count_rates.rds")
 
-plot_dist_df <- left_join(count_rates, dist_df, by = c("sampleid", "gene_name"))
+plot_dist_df <- left_join(count_rates, dist_df, by = c("sampleid", "gene_name")) %>%
+    filter(method != "Salmon hla-mapper")
 
-ggplot(plot_dist_df, aes(wdist, rate_counts, color = method)) +
-    geom_hline(yintercept = 1L, linetype = 2, size = 1, color = "grey") +
-    geom_line(stat = "smooth", method = "loess", span = 1, se = FALSE, 
-              alpha = .4, size = 1, show.legend = FALSE) +
-    geom_point(size = 1, alpha = .5) +
-    scale_x_continuous(labels = function(x) scales::percent(x, accuracy = 1)) +
-    scale_color_manual(values = c("Salmon ref genome" = "black",
-                                  "Salmon personalized" = "goldenrod4",
-                                  "HLApers" = "tomato4",
-                                  "hla-mapper::rna" = "midnightblue")) +
+ggplot(plot_dist_df, aes(wdist, rate_counts)) +
+    geom_line(aes(group = method), 
+              stat = "smooth", method = "loess", span = 1, se = FALSE, 
+              size = 1.5, show.legend = FALSE) +
+    geom_line(aes(color = method), 
+              stat = "smooth", method = "loess", span = 1, se = FALSE, 
+              size = 1, show.legend = FALSE) +
+    geom_point(aes(fill = method), size = 2, shape = 21) +
+    scale_x_continuous(breaks = pretty_breaks(3),
+                       labels = function(x) scales::percent(x, accuracy = 1)) +
+    scale_color_manual(labels = c("Salmon ref genome" = "Ref transcriptome",
+                                 "Salmon personalized" = "Personalized"),
+                      values = c("white", "black")) +
+    scale_fill_manual(labels = c("Salmon ref genome" = "Ref transcriptome",
+                                  "Salmon personalized" = "Personalized"),
+                       values = c("white", "black")) +
     facet_wrap(~gene_name, scales = "free_x") +
-    theme_bw() + 
-    theme(text = element_text(family = "Times"), 
-          panel.grid = element_blank()) +
-    labs(x = "Weighted sequence divergence to the HLA reference allele (%)", 
-         y = expression(frac(Estimated~counts, True~counts))) +
-    guides(color = guide_legend(override.aes = list(size = 2.5)))
+    theme(text = element_text(size = 8, family = "Arial"), 
+          legend.text = element_text(size = 8, family = "Arial"),
+          panel.grid.minor = element_blank(),
+          panel.background = element_rect(fill = "grey96"),
+          legend.position = "top") +
+    labs(x = "Weighted sequence divergence to the HLA allele in the reference genome (%)", 
+         y = expression(frac(Estimated~counts, True~counts)),
+         fill = "Method:") +
+    guides(color = guide_legend(override.aes = list(size = 2.5, alpha = 1)))
     
-ggsave("./plots/accuracy.jpeg", width = 6.5, height = 2)
+ggsave("./plots/fig1.jpg", width = 5, height = 2.5)
+
+
 
 
 # Salmon vs hla-mapper
-hla_quants <- read_rds("./plot_data/hla_est_counts.rds") %>%
-    filter(method %in% c("Salmon personalized", "hla-mapper::rna")) %>%
-    pivot_wider(names_from = method, values_from = counts)
-
-cor_hla <- hla_quants %>%
-    group_by(gene_name) %>%
-    summarise(y = max(`hla-mapper::rna`),
-              r = round(cor(`hla-mapper::rna`, `Salmon personalized`), 3),
-              rho = round(cor(`hla-mapper::rna`, `Salmon personalized`, 
-                              method = "spearman"), 3),
-              rho_lab = paste("r ==", r, "*', '~rho == ", rho)) %>%
-    ungroup()
-
-ggplot(hla_quants, aes(`Salmon personalized`, `hla-mapper::rna`)) +
-    geom_point() +
-    geom_text(data = cor_hla, aes(x = 0, y + (y *.1), label = rho_lab),
-              hjust = "inward", vjust = "inward", 
-              parse = TRUE,
-              size = 3) +
-    facet_wrap(~gene_name, scales = "free") +
-    scale_x_continuous(labels = comma, breaks = pretty_breaks(3)) + 
-    scale_y_continuous(labels = comma, breaks = pretty_breaks(3)) + 
-    theme_bw() +
-    theme(text = element_text(size = 8))
-
-ggsave("./plots/salmonpers_vs_hlamapper.jpeg", width = 6, height = 2)
+# hla_quants <- read_rds("./plot_data/hla_est_counts.rds") %>%
+#     filter(method %in% c("Salmon personalized", "hla-mapper::rna")) %>%
+#     pivot_wider(names_from = method, values_from = counts)
+# 
+# cor_hla <- hla_quants %>%
+#     group_by(gene_name) %>%
+#     summarise(y = max(`hla-mapper::rna`),
+#               r = round(cor(`hla-mapper::rna`, `Salmon personalized`), 3),
+#               rho = round(cor(`hla-mapper::rna`, `Salmon personalized`, 
+#                               method = "spearman"), 3),
+#               rho_lab = paste("r ==", r, "*', '~rho == ", rho)) %>%
+#     ungroup()
+# 
+# ggplot(hla_quants, aes(`Salmon personalized`, `hla-mapper::rna`)) +
+#     geom_point() +
+#     geom_text(data = cor_hla, aes(x = 0, y + (y *.1), label = rho_lab),
+#               hjust = "inward", vjust = "inward", 
+#               parse = TRUE,
+#               size = 3) +
+#     facet_wrap(~gene_name, scales = "free") +
+#     scale_x_continuous(labels = comma, breaks = pretty_breaks(3)) + 
+#     scale_y_continuous(labels = comma, breaks = pretty_breaks(3)) + 
+#     theme_bw() +
+#     theme(text = element_text(size = 8))
+# 
+# ggsave("./plots/salmonpers_vs_hlamapper.jpeg", width = 6, height = 2)
 
 # # Coverage
 # 
@@ -117,7 +129,32 @@ ggsave("./plots/salmonpers_vs_hlamapper.jpeg", width = 6, height = 2)
 # 
 # ggsave("./plots/coverage.jpeg")
 
-# hla-mapper mappings
+# Other pipelines
+plot_dist_alt <- 
+    left_join(count_rates, dist_df, by = c("sampleid", "gene_name")) %>%
+    filter(!grepl("Salmon", method))
+
+alt_pipes_1 <- ggplot(plot_dist_alt, aes(wdist, rate_counts, color = method)) +
+    geom_hline(yintercept = 1L, linetype = 2, size = 1, color = "grey") +
+    geom_line(stat = "smooth", method = "loess", span = 1, se = FALSE, 
+              alpha = .4, size = 1, show.legend = FALSE) +
+    geom_point(size = 1, alpha = .5) +
+    scale_x_continuous(labels = function(x) scales::percent(x, accuracy = 1)) +
+    scale_color_manual(values = c("HLApers" = "grey25",
+                                  "hla-mapper::rna" = "royalblue",
+                                  "hla-mapper:rna_corrected" = "goldenrod3")) +
+    facet_wrap(~gene_name, scales = "free_x") +
+    theme_bw() + 
+    theme(text = element_text(family = "Times"), 
+          panel.grid = element_blank(),
+          legend.position = "top") +
+    labs(x = "Weighted sequence divergence to the HLA reference allele (%)", 
+         y = expression(frac(Estimated~counts, True~counts))) +
+    guides(color = guide_legend(override.aes = list(size = 2.5, alpha = 1)))
+
+
+
+
 simul_reads <- read_rds("./plot_data/simul_reads_summary.rds") %>%
     mutate(mapped_gene = recode(mapped_gene, 
                                 "Unassigned_Unmapped" = "Unmap",
@@ -129,7 +166,7 @@ simul_reads <- read_rds("./plot_data/simul_reads_summary.rds") %>%
 
 mapped_reads <- read_rds("./plot_data/mapped_reads_summary.rds")
 
-mapper_1 <- ggplot(mapped_reads, aes(mapped_gene, true_gene)) +
+alt_pipes_2 <- ggplot(mapped_reads, aes(mapped_gene, true_gene)) +
     geom_point(aes(size = prop)) +
     scale_color_continuous("", 
                            labels = scales::percent, 
@@ -140,16 +177,15 @@ mapper_1 <- ggplot(mapped_reads, aes(mapped_gene, true_gene)) +
     labs(x = "Mapped Gene", y = "True Gene")
 
 
-mapper_2 <- simul_reads %>%
+alt_pipes_3 <- simul_reads %>%
     filter(prop > 0.0001) %>%
     ggplot(aes(x = reorder_within(mapped_gene, desc(prop), true_gene), 
                y = prop)) +
     geom_col() +
-    facet_wrap(~true_gene, scales = "free_x") +
+    facet_wrap(~true_gene, ncol = 1, scales = "free_x") +
     scale_x_discrete(labels = function(x) str_extract(x, "^([^_]+)")) + 
-    scale_y_continuous(labels = percent) +
-    theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
-          plot.margin = unit(c(0.5, 0.5, 0.5, 1), "cm")) +
+    scale_y_continuous(labels = percent, breaks = c(0, .5, 1)) +
+    theme(axis.text.x = element_text(size = 7)) +
     labs(x = NULL, y = " ")
 
 
@@ -167,10 +203,10 @@ mapped_levels <- subread_summary %>%
     arrange(desc(prop)) %>%
     pull(mapped_gene)
 
-mapper_3 <- subread_summary %>%
+alt_pipes_4 <- subread_summary %>%
     mutate(mapped_gene = factor(mapped_gene, levels = mapped_levels)) %>%
     ggplot(aes(i, prop, fill = mapped_gene)) +
-    geom_col(width = 1) +
+    geom_col(width = 1, position = "fill") +
     facet_wrap(~gene_name, ncol = 1, scales = "free_x") +
     scale_y_continuous(labels = percent) +
     scale_fill_npg() +
@@ -178,16 +214,15 @@ mapper_3 <- subread_summary %>%
     theme(panel.grid = element_blank(),
           panel.spacing = unit(0, "lines"),
           axis.text = element_blank(), 
-          strip.background = element_rect(fill = "grey70"),
-          plot.margin = unit(c(0,0,0,1), "cm")) +
-    labs(x = NULL, y = NULL)
+          strip.background = element_rect(fill = "grey70")) +
+    labs(x = NULL, y = NULL, fill = NULL)
 
 
-plot_grid(mapper_1, 
-          mapper_2, 
-          mapper_3, 
+plot_grid(alt_pipes_1, 
+          alt_pipes_2, 
+          plot_grid(alt_pipes_3, alt_pipes_4, nrow = 1, rel_widths = c(.9, 1)),
           ncol = 1, 
           rel_heights = c(.5, .5, 1),
           labels = c("A)", "B)", "C)"))
 
-ggsave("./plots/hlamapper_mappings.jpeg", height = 8, width = 6)
+ggsave("./plots/alternative_pipelines.jpeg", height = 8, width = 6)
