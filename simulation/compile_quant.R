@@ -167,6 +167,30 @@ count_rates <- quant_df %>%
 write_rds(count_rates, "./plot_data/count_rates.rds")
 
 
+
+
+
+
+
+
+# Fold change in Ref approach
+hla_bed <- read_tsv("../analysis/plot_data/hla.bed", col_names = FALSE)
+
+mhc_genes <- read_tsv("../indices/transcript_annotation_df.tsv") %>%
+    filter(chr == "chr6") %>%
+    mutate(tss = ifelse(strand == "+", start, end)) %>%
+    filter(between(tss, min(hla_bed$X2) - 5e5, max(hla_bed$X3) + 5e5)) %>%
+    distinct(gene_id, gene_name)
+
+salmon_ref %>%
+    inner_join(mhc_genes) %>%
+    filter(!(counts < 5 & true_counts < 5)) %>%
+    filter(counts > 10) %>%
+    mutate(d = counts - true_counts) %>%
+    filter(gene_name %in% c("HLA-A", "HLA-B", "HLA-C")) %>%
+    arrange(sampleid)
+    
+
 ### HLApers
 #hlapers_annot <- sprintf("./hlapers/genotypes/%s_genotypes.tsv", samples) %>%
 #    setNames(samples) %>%
