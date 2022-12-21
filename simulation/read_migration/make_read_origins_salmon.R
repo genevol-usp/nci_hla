@@ -1,13 +1,15 @@
 library(tidyverse)
+library(furrr)
 
+plan(multisession, workers = 8)
 
 # Simulated reads for each individual
 samples <- read_lines("../samples.txt")
 
-read_ids <- "/scratch/vitor/temp/%s_readids.txt" |>
+read_ids <- "/scratch/vitor/temp/%s_readids_salmon.txt" |>
     sprintf(samples) |>
     setNames(samples) |>
-    map_dfr(function(x) read_lines(x) |>
+    future_map_dfr(function(x) read_lines(x) |>
 	    tibble(id = _) |>
 	    separate(id, c("id", "info"), sep = " ") |>
 	    separate(info, c("read", "mate"), sep = ";") |>
@@ -23,6 +25,7 @@ read_ids <- "/scratch/vitor/temp/%s_readids.txt" |>
 
 # Find origin position for REF
 transcript_annot <- read_tsv("./transcript_annot.tsv")
+exon_annot <- read_tsv("./exon_annot.tsv")
 
 read_ids_ref <- filter(read_ids, !grepl("_[ABC]\\*", id)) |>
     left_join(transcript_annot) |>
@@ -81,12 +84,11 @@ hla_mates_origins <-
 	   join_by(transcript_id == tx, mate == i)) %>%
     select(sampleid, readid, gene_name, origin_mate = pos)
 
-hla_origins <- left_join(hla_reads_origin, hla_mates_origin) |>
+hla_origins <- left_join(hla_reads_origins, hla_mates_origins) |>
     mutate(chr = "chr6") |>
     select(sampleid, readid, chr, gene_name, origin_read, origin_mate)
-
 
 origins_out <- bind_rows(ref_origins, hla_origins) |>
     arrange(sampleid, readid)
 
-write_tsv(origins_out, "read_origins.tsv")
+write_tsv(origins_out, "read_origins_salmon.tsv")

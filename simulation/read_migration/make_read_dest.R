@@ -72,6 +72,7 @@ second_res <- alig_df |>
 
 # 7 minutes and 20GB of RAM
 # because grouping step is too slow
+# it took over 1 hour for sample #42
 destinations_read <- first_res |>
     mutate(readlen = map_int(positions, nrow)) |>
     unnest(cols = c(positions)) |>
@@ -111,7 +112,7 @@ destinations_df <-
 	      pos = median(pos)) |>
     ungroup()
 
-# unmap?
+# unmap
 unmap_df <- sam |>
     filter(flag %in% c(77, 141)) |>
     distinct(readid) |>

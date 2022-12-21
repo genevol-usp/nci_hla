@@ -7,27 +7,29 @@
 #SBATCH -p long
 #SBATCH --array=1-50
 #SBATCH --job-name=ReadOrigins
-#SBATCH -o /home/vitor/nci_hla/simulation/log/Read-origin-%a
+#SBATCH -o /home/vitor/nci_hla/simulation/log/Read-origin-salmon-%a
 
 
 SAMPLELIST=/home/vitor/nci_hla/simulation/samples.txt
 
 SAMPLE=$( awk -v ARRID="$SLURM_ARRAY_TASK_ID" 'FNR==ARRID { print $1 }' $SAMPLELIST )
-BED=/home/vitor/nci_hla/analysis/plot_data/hla.bed
-BAM=/media/storage/genevol/vitor/simulation/bam/${SAMPLE}_Aligned.sortedByCoord.out.bam
+REFTX=/home/vitor/nci_hla/indices/hla_ref_transcripts.txt
+BAM=/home/vitor/nci_hla/simulation/salmon/quant_salmon.v1.8/${SAMPLE}/mapping.bam
 FQ=/media/storage/genevol/vitor/simulation/fastq/${SAMPLE}/sample_01_1.fastq.gz
-TMP=/scratch/vitor/temp/${SAMPLE}_hla.sam
-READS=/scratch/vitor/temp/${SAMPLE}_reads.txt
-OUT=/scratch/vitor/temp/${SAMPLE}_hlareads.sam
-FQOUT=/scratch/vitor/temp/${SAMPLE}_readids.txt
+TMP=/scratch/vitor/temp/${SAMPLE}_tmp_salmon.txt
+READS=/scratch/vitor/temp/${SAMPLE}_reads_salmon.txt
+OUT=/scratch/vitor/temp/${SAMPLE}_hlareads_salmon.sam
+FQOUT=/scratch/vitor/temp/${SAMPLE}_readids_salmon.txt
 
 # simulated reads for HLA
 samtools view $BAM |\
-    awk '$1 ~ /read[0-9.]+_ENST[0-9.]+_[ABC]/' > $TMP
+    awk '$1 ~ /read[0-9.]+_ENST[0-9.]+_[ABC]/ { print $1 }' > $TMP
 
 # other reads mapping to HLA
-samtools view -L $BED $BAM |\
-    awk '$1 !~ /read[0-9.]+_ENST[0-9.]+_[ABC]/' >> $TMP
+samtools view $BAM |\
+    awk '$1 !~ /read[0-9.]+_ENST[0-9.]+_[ABC]/' |\
+    grep -F -f $REFTX |\
+    awk '{ print $1 }' >> $TMP
 
 awk '{ print $1 }' $TMP | sort | uniq > $READS
 
