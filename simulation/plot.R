@@ -5,6 +5,7 @@ library(ggridges)
 library(cowplot)
 library(scales)
 library(tidytext)
+library(ggforce)
 
 # simulated transcripts
 ident_df <- read_rds("./plot_data/simulated_transcript_identity.rds") %>%
@@ -40,7 +41,7 @@ count_rates <- read_rds("./plot_data/count_rates.rds")
 plot_dist_df <- left_join(count_rates, dist_df, by = c("sampleid", "gene_name")) %>%
     filter(method != "Salmon hla-mapper")
 
-ggplot(plot_dist_df, aes(wdist, rate_counts)) +
+fig1 <- ggplot(plot_dist_df, aes(wdist, rate_counts)) +
     geom_line(aes(group = method), 
               stat = "smooth", method = "loess", span = 1, se = FALSE, 
               size = 1.5, show.legend = FALSE) +
@@ -67,7 +68,159 @@ ggplot(plot_dist_df, aes(wdist, rate_counts)) +
          fill = "Method:") +
     guides(color = guide_legend(override.aes = list(size = 2.5, alpha = 1)))
     
-ggsave("./plots/fig1.jpg", width = 5, height = 2.5)
+ggsave("./plots/fig1.jpg", fig1, width = 5, height = 2.5)
+
+# Origin-destination
+od_star_data <- read_tsv("./read_migration/origin_dest_results.tsv")
+
+od_star_avg <- od_star_data |>
+    complete(sampleid, origin, dest, fill = list(w_by_simul = 0, w_by_mapped = 0)) |>
+    group_by(origin, dest) |>
+    summarise_at(vars(starts_with("w_by")), mean) |>
+    ungroup()
+
+dat_star_simul_gg <- od_star_avg |>
+    filter(origin %in% c("HLA-A", "HLA-B", "HLA-C")) |>
+    select(origin, dest, w = w_by_simul) |>
+    mutate(dest = ifelse(w >= 0.01 | dest == "unmap", dest, "other")) |>
+    group_by(origin, dest) |>
+    summarise(w = sum(w)) |>
+    ungroup() |>
+    select(origin, dest, Freq = w) |>
+    gather_set_data(1:2) %>%
+    arrange(x, origin, desc(Freq))
+
+dat_star_mapped_gg <- od_star_avg |>
+    filter(dest %in% c("HLA-A", "HLA-B", "HLA-C")) |>
+    select(origin, dest, w = w_by_mapped) |>
+    mutate(origin = ifelse(w >= 0.01, origin, "other")) |>
+    group_by(origin, dest) |>
+    summarise(w = sum(w)) |>
+    ungroup() |>
+    select(origin, dest, Freq = w) |>
+    gather_set_data(1:2) %>%
+    arrange(x, origin, desc(Freq))
+
+od_salmon <- read_tsv("./read_migration/origin_dest_results_salmon.tsv")
+
+od_salmon_avg <- od_salmon |>
+    complete(sampleid, origin, dest, fill = list(w_by_simul = 0, w_by_mapped = 0)) |>
+    group_by(origin, dest) |>
+    summarise_at(vars(starts_with("w_by")), mean) |>
+    ungroup()
+
+dat_salmon_simul_gg <- od_salmon_avg |>
+    filter(origin %in% c("HLA-A", "HLA-B", "HLA-C")) |>
+    select(origin, dest, w = w_by_simul) |>
+    mutate(dest = ifelse(w >= 0.01 | dest == "unmap", dest, "other")) |>
+    group_by(origin, dest) |>
+    summarise(w = sum(w)) |>
+    ungroup() |>
+    select(origin, dest, Freq = w) |>
+    gather_set_data(1:2) %>%
+    arrange(x, origin, desc(Freq))
+
+dat_salmon_mapped_gg <- od_salmon_avg |>
+    filter(dest %in% c("HLA-A", "HLA-B", "HLA-C")) |>
+    select(origin, dest, w = w_by_mapped) |>
+    mutate(origin = ifelse(w >= 0.01, origin, "other")) |>
+    group_by(origin, dest) |>
+    summarise(w = sum(w)) |>
+    ungroup() |>
+    select(origin, dest, Freq = w) |>
+    gather_set_data(1:2) %>%
+    arrange(x, origin, desc(Freq))
+
+mycols <- 
+    c(dat_star_simul_gg$y, dat_star_mapped_gg$y, dat_salmon_simul_gg$y, dat_salmon_mapped_gg$y) |>
+    unique() |>
+    tibble(dest = _) |>
+    mutate(color = case_when(dest == "HLA-A" ~ "black",
+			     dest == "HLA-B" ~ "cornflowerblue",
+			     dest == "HLA-C" ~ "goldenrod3",
+			     TRUE ~ "grey")) |>
+    arrange(dest) |>
+    deframe()
+
+
+plot_ggforce <- function(dat) {
+    ggplot(dat, aes(x = x, id = id, split = y, value = Freq)) +
+	geom_parallel_sets(aes(fill = dest), alpha = .75, axis.width = 0.2,
+			   n = 100, strength = 0.5) +
+	geom_parallel_sets_axes(axis.width = 0.25, fill = "white",
+				color = NA, size = 0.15) +
+	geom_parallel_sets_labels(color = "gray35", size = 4, angle = 0, fontface = "bold") +
+	scale_fill_manual(values = mycols) +
+	scale_color_manual(values = mycols) +
+	theme( 
+	      panel.background = element_rect(fill = "white", color = "white"),
+	      plot.background = element_rect(color = "white", fill = "white"),
+	      legend.position = "none",
+	      panel.grid.major = element_blank(),
+	      panel.grid.minor = element_blank(),
+	      strip.background = element_rect(color = "white", fill = NA, size = NA),
+	      axis.text = element_blank(),
+	      axis.title = element_blank(),
+	      axis.ticks = element_blank(),
+	      plot.title = element_text(hjust = 0.5))
+}
+
+od_out <- 
+    plot_grid(
+	      plot_ggforce(dat_star_simul_gg) + labs(title = "STAR (weighted by total reads simulated from origin)"),
+	      plot_ggforce(dat_star_mapped_gg) + labs(title = "STAR (weighted by total reads mapped to destination)"),
+	      plot_ggforce(dat_salmon_simul_gg) + labs(title = "Salmon (weighted by total reads simulated from origin)"),
+	      plot_ggforce(dat_salmon_mapped_gg) + labs(title = "Salmon (weighted by total reads mapped to destination)"),
+	      ncol = 2)	  
+
+ggsave("./plots/readmigration.jpg", od_out, dpi = 600, height = 10, width = 10)
+
+
+
+
+
+
+# Divergent individuals at HLA-B
+
+diverg_b <- dist_df |>
+    filter(gene_name == "HLA-B") |>
+    filter(wdist > median(wdist)) |>
+    arrange(wdist)
+
+od_salmon_div <- filter(od_salmon, sampleid %in% diverg_b$sampleid)
+
+od_salmon_div_avg <- od_salmon_div |>
+    complete(sampleid, origin, dest, fill = list(w_by_simul = 0, w_by_mapped = 0)) |>
+    group_by(origin, dest) |>
+    summarise_at(vars(starts_with("w_by")), mean) |>
+    ungroup()
+
+dat_salmon_div_simul_gg <- od_salmon_div_avg |>
+    filter(origin %in% c("HLA-A", "HLA-B", "HLA-C")) |>
+    select(origin, dest, w = w_by_simul) |>
+    mutate(dest = ifelse(w >= 0.01 | dest == "unmap", dest, "other")) |>
+    group_by(origin, dest) |>
+    summarise(w = sum(w)) |>
+    ungroup() |>
+    select(origin, dest, Freq = w) |>
+    gather_set_data(1:2) %>%
+    arrange(x, origin, desc(Freq))
+
+dat_salmon_div_mapped_gg <- od_salmon_div_avg |>
+    filter(dest %in% c("HLA-A", "HLA-B", "HLA-C")) |>
+    select(origin, dest, w = w_by_mapped) |>
+    mutate(origin = ifelse(w >= 0.01, origin, "other")) |>
+    group_by(origin, dest) |>
+    summarise(w = sum(w)) |>
+    ungroup() |>
+    select(origin, dest, Freq = w) |>
+    gather_set_data(1:2) %>%
+    arrange(x, origin, desc(Freq))
+
+    plot_grid(
+	      plot_ggforce(dat_salmon_div_simul_gg) + labs(title = "Salmon (weighted by total reads simulated from origin)"),
+	      plot_ggforce(dat_salmon_div_mapped_gg) + labs(title = "Salmon (weighted by total reads mapped to destination)"),
+	      ncol = 2)	  
 
 
 
@@ -226,3 +379,10 @@ plot_grid(alt_pipes_1,
           labels = c("A)", "B)", "C)"))
 
 ggsave("./plots/alternative_pipelines.jpeg", height = 8, width = 6)
+
+
+
+
+
+
+
